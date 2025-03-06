@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { database } from '../lib/firebase';
 import { ref, set } from 'firebase/database';
 
@@ -8,14 +8,14 @@ const RateService: React.FC = () => {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize WebSocket connection
-  const connectWebSocket = () => {
+  const connectWebSocket = useCallback(() => {
     // Close existing connection if any
     if (wsRef.current) {
       wsRef.current.close();
     }
 
-    // Create new WebSocket connection
-    const ws = new WebSocket('ws://localhost:5000');
+    const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:5000';
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     // Connection opened
@@ -75,19 +75,22 @@ const RateService: React.FC = () => {
       console.error('WebSocket error:', error);
       // The onclose handler will be called after this
     };
-  };
+  }, []);
 
   // Fallback HTTP method in case WebSocket fails
-  const fetchRatesHttp = async () => {
+  const fetchRatesHttp = useCallback(async () => {
     try {
+      const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || 'http://localhost:5000';
+      const baseUrl = wsUrl.replace('wss:', 'https:').replace('ws:', 'http:');
+      
       // Fetch VALR rate via your proxy endpoint
-      const valrResponse = await fetch('http://localhost:5000/api/valr_rate');
+      const valrResponse = await fetch(`${baseUrl}/api/valr_rate`);
       if (!valrResponse.ok) throw new Error('Failed to fetch VALR rate from proxy');
       const valrData = await valrResponse.json();
       const valrRate = parseFloat(valrData.lastTradedPrice);
 
       // Fetch market rate from Exchange Rate API
-      const exchangeRateResponse = await fetch('http://localhost:5000/api/exchange_rate');
+      const exchangeRateResponse = await fetch(`${baseUrl}/api/exchange_rate`);
       if (!exchangeRateResponse.ok) throw new Error('Failed to fetch exchange rate');
       const exchangeRateData = await exchangeRateResponse.json();
       const marketRate = exchangeRateData.conversion_rates.ZAR;
@@ -105,7 +108,7 @@ const RateService: React.FC = () => {
     } catch (error) {
       console.error('Error updating rates via HTTP:', error);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // Initialize WebSocket connection
@@ -117,7 +120,7 @@ const RateService: React.FC = () => {
         console.log('Using HTTP fallback to update rates');
         fetchRatesHttp();
       }
-    }, 1 * 60 * 1000); // Check every 1 minutes
+    }, 1 * 60 * 1000); // Check every 1 minute
 
     // Clean up on component unmount
     return () => {
@@ -129,7 +132,7 @@ const RateService: React.FC = () => {
       }
       clearInterval(httpFallbackInterval);
     };
-  }, []);
+  }, [isConnected, connectWebSocket, fetchRatesHttp]);
 
   return null;
 };

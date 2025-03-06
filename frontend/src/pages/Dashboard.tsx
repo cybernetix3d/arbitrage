@@ -14,7 +14,8 @@ import { database } from '../lib/firebase';
 import { ref, onValue } from 'firebase/database';
 import ProfitChart from '../components/ProfitChart';
 import { Link } from 'react-router-dom';
-import TradeForm from '../components/TradeForm';
+import ResponsiveTradeForm from '../components/ResponsiveTradeForm';
+import ResponsiveTradeCard from '../components/ResponsiveTradeCard';
 
 interface RateData {
   valrRate: number;
@@ -233,7 +234,7 @@ function Dashboard() {
   const renderTradeForms = () => {
     if (showNewTradeForm) {
       return (
-        <TradeForm
+        <ResponsiveTradeForm
           onClose={handleTradeFormClosed}
           onTradeAdded={handleTradeFormClosed}
         />
@@ -242,7 +243,7 @@ function Dashboard() {
 
     if (showCloseTradeForm && selectedTradeId) {
       return (
-        <TradeForm
+        <ResponsiveTradeForm
           onClose={handleTradeFormClosed}
           onTradeAdded={handleTradeFormClosed}
           tradeId={selectedTradeId}
@@ -275,14 +276,14 @@ function Dashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Current Profit */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Current Profit (ZAR)
               </p>
               <p
-                className={`text-2xl font-bold ${
+                className={`text-xl sm:text-2xl font-bold ${
                   currentProfit.profitZAR >= 0
                     ? 'text-green-600 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
@@ -296,7 +297,7 @@ function Dashboard() {
               </p>
             </div>
             <TrendingUp
-              className={`h-8 w-8 ${
+              className={`h-6 w-6 sm:h-8 sm:w-8 ${
                 currentProfit.profitZAR >= 0
                   ? 'text-green-600 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
@@ -316,14 +317,14 @@ function Dashboard() {
         </div>
 
         {/* Lifetime Profit */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Lifetime Profit
               </p>
               <p
-                className={`text-2xl font-bold ${
+                className={`text-xl sm:text-2xl font-bold ${
                   totalLifetimeProfit >= 0
                     ? 'text-green-600 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
@@ -337,7 +338,7 @@ function Dashboard() {
               </p>
             </div>
             <CheckCircle
-              className={`h-8 w-8 ${
+              className={`h-6 w-6 sm:h-8 sm:w-8 ${
                 totalLifetimeProfit >= 0
                   ? 'text-green-600 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
@@ -347,14 +348,14 @@ function Dashboard() {
         </div>
 
         {/* Current Spread */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Current Spread
               </p>
               <p
-                className={`text-2xl font-bold ${
+                className={`text-xl sm:text-2xl font-bold ${
                   rateData.spread > 0
                     ? 'text-green-600 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
@@ -363,31 +364,31 @@ function Dashboard() {
                 {rateData.spread.toFixed(2)}%
               </p>
             </div>
-            <ArrowUpDown className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            <ArrowUpDown className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 dark:text-blue-400" />
           </div>
         </div>
 
         {/* Open Trades Count */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Open Trades
               </p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+              <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
                 {openTrades.length}
               </p>
             </div>
-            <Clock className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 dark:text-blue-400" />
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Exchange Rates */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
               Exchange Rates
             </h2>
             <span className="text-xs text-gray-500">
@@ -454,9 +455,9 @@ function Dashboard() {
         </div>
 
         {/* Current Investment (Open Trade Info) */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
               Current Investment
             </h2>
             {openTrades.length === 0 ? (
@@ -477,7 +478,7 @@ function Dashboard() {
           </div>
 
           {openTrades.length === 0 ? (
-            <div className="p-8 text-center border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
+            <div className="p-4 sm:p-8 text-center border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
               <p className="text-gray-500 dark:text-gray-400 mb-4">
                 No open trades. Start a new trade to track your arbitrage profits.
               </p>
@@ -565,17 +566,17 @@ function Dashboard() {
       </div>
 
       {/* Profit History */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+      <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
+        <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-4">
           Profit History
         </h2>
         <ProfitChart />
       </div>
 
       {/* Open Trades Section */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+      <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-2">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
             Open Trades
           </h2>
           <div className="flex items-center space-x-3">
@@ -599,110 +600,126 @@ function Dashboard() {
             No open trades found. Start a new trade to track your arbitrage profits.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-900">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Initial ZAR
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    USD
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Market Rate
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Profit
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    ROI
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {openTrades.map((trade) => (
-                  <tr key={trade.id}>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                      {new Date(trade.tradeDate).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                      {trade.tradeName}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                      R{' '}
-                      {trade.initialZAR.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                      ${' '}
-                      {trade.usdPurchased.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                      R {trade.marketRate.toFixed(4)}
-                      {trade.marketRate !== rateData.marketRate && (
-                        <span className="ml-2 text-xs text-yellow-600 dark:text-yellow-400">
-                          (Custom)
-                        </span>
-                      )}
-                    </td>
-                    <td
-                      className={`px-4 py-3 whitespace-nowrap text-sm ${
-                        trade.profitZAR >= 0
-                          ? 'text-green-600 dark:text-green-400'
-                          : 'text-red-600 dark:text-red-400'
-                      }`}
-                    >
-                      R{' '}
-                      {trade.profitZAR.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td
-                      className={`px-4 py-3 whitespace-nowrap text-sm ${
-                        trade.profitPercentage >= 0
-                          ? 'text-green-600 dark:text-green-400'
-                          : 'text-red-600 dark:text-red-400'
-                      }`}
-                    >
-                      {trade.profitPercentage.toFixed(2)}%
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => handleOpenCloseTradeForm(trade.id)}
-                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                      >
-                        Close Trade
-                      </button>
-                    </td>
+          <>
+            {/* For desktop screens - show the table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-900">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Name
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Initial ZAR
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      USD
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Market Rate
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Profit
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      ROI
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {openTrades.map((trade) => (
+                    <tr key={trade.id}>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        {new Date(trade.tradeDate).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                        {trade.tradeName}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        R{' '}
+                        {trade.initialZAR.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        ${' '}
+                        {trade.usdPurchased.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        R {trade.marketRate.toFixed(4)}
+                        {trade.marketRate !== rateData.marketRate && (
+                          <span className="ml-2 text-xs text-yellow-600 dark:text-yellow-400">
+                            (Custom)
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        className={`px-4 py-3 whitespace-nowrap text-sm ${
+                          trade.profitZAR >= 0
+                            ? 'text-green-600 dark:text-green-400'
+                            : 'text-red-600 dark:text-red-400'
+                        }`}
+                      >
+                        R{' '}
+                        {trade.profitZAR.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td
+                        className={`px-4 py-3 whitespace-nowrap text-sm ${
+                          trade.profitPercentage >= 0
+                            ? 'text-green-600 dark:text-green-400'
+                            : 'text-red-600 dark:text-red-400'
+                        }`}
+                      >
+                        {trade.profitPercentage.toFixed(2)}%
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
+                        <button
+                          onClick={() => handleOpenCloseTradeForm(trade.id)}
+                          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                        >
+                          Close Trade
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* For mobile screens - show the cards */}
+            <div className="md:hidden space-y-4">
+              {openTrades.map((trade) => (
+                <ResponsiveTradeCard 
+                  key={trade.id}
+                  trade={trade}
+                  onEdit={() => handleEditTrade(trade.id)}
+                  onDelete={() => {/* Not implemented in dashboard */}}
+                  onClose={handleOpenCloseTradeForm}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
 
       {/* Recent Closed Trades Section */}
       {recentClosedTrades.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-2">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
               Recent Closed Trades
             </h2>
             <Link
@@ -713,7 +730,8 @@ function Dashboard() {
             </Link>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* For desktop screens - show the table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-900">
                 <tr>
@@ -793,10 +811,29 @@ function Dashboard() {
               </tbody>
             </table>
           </div>
+          
+          {/* For mobile screens - show the cards */}
+          <div className="md:hidden space-y-4">
+            {recentClosedTrades.map((trade) => (
+              <ResponsiveTradeCard 
+                key={trade.id}
+                trade={trade}
+                onEdit={() => {/* No editing for closed trades */}}
+                onDelete={() => {/* Not implemented in dashboard */}}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 }
+
+// Function for handling editing trades - needed for the ResponsiveTradeCard
+const handleEditTrade = (id: string) => {
+  // This function isn't fully implemented in the dashboard view
+  // but is needed as a prop for ResponsiveTradeCard
+  console.log(`Edit trade ${id} requested from dashboard`);
+};
 
 export default Dashboard;

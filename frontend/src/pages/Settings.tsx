@@ -581,12 +581,12 @@ function Settings() {
                     name="pinNumber"
                     value={pinForm.pinNumber}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="mt-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-600 dark:border-gray-600 dark:text-white"
                     placeholder="Enter PIN number"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-purple-700 dark:text-gray-300 mb-1">
                     Allowed Amount (ZAR)
                   </label>
                   <input
@@ -596,7 +596,7 @@ function Settings() {
                     onChange={handleInputChange}
                     min="0"
                     step="1000"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="mt-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-600 dark:border-gray-600 dark:text-white"
                     placeholder="e.g. 100000"
                   />
                 </div>

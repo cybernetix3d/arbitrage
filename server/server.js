@@ -15,6 +15,11 @@ const wss = new WebSocketServer({ server });
 app.use(cors());
 app.use(express.json());
 
+// Add a root route handler
+app.get('/', (req, res) => {
+  res.send('USD/ZAR Rate Tracking API. WebSocket connection available or use /api/valr_rate and /api/exchange_rate endpoints.');
+});
+
 // Store connected clients
 const clients = new Set();
 
@@ -127,6 +132,41 @@ app.get('/api/exchange_rate', async (req, res) => {
   } catch (error) {
     console.error('Error fetching exchange rate:', error);
     res.status(500).json({ error: 'Failed to fetch exchange rate' });
+  }
+});
+
+// Add a combined rates endpoint
+app.get('/api/rates', async (req, res) => {
+  try {
+    // Fetch VALR rate
+    const valrResponse = await fetch('https://api.valr.com/v1/public/USDCZAR/marketsummary', {
+      headers: { 'X-Api-Key': process.env.VALR_API_KEY }
+    });
+    if (!valrResponse.ok) {
+      throw new Error(`VALR API error: ${valrResponse.statusText}`);
+    }
+    const valrData = await valrResponse.json();
+    const valrRate = parseFloat(valrData.lastTradedPrice);
+
+    // Fetch market rate from Exchange Rate API
+    const exchangeRateResponse = await fetch(`https://v6.exchangerate-api.com/v6/${process.env.EXCHANGERATE_API_KEY}/latest/USD`);
+    if (!exchangeRateResponse.ok) {
+      throw new Error(`Exchange Rate API error: ${exchangeRateResponse.statusText}`);
+    }
+    const exchangeRateData = await exchangeRateResponse.json();
+    const marketRate = exchangeRateData.conversion_rates.ZAR;
+
+    const spread = ((valrRate / marketRate) - 1) * 100;
+
+    res.json({
+      valrRate,
+      marketRate,
+      spread,
+      lastUpdated: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error fetching rates:', error);
+    res.status(500).json({ error: 'Failed to fetch rates' });
   }
 });
 

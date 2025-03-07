@@ -14,6 +14,12 @@ const PORT = process.env.PORT || 5000;
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
+// API Keys - use environment variables first, fallback to hardcoded values
+const VALR_API_KEY = process.env.VALR_API_KEY || "a147c5067273a303bae52b4abe829342ba045062bbe94f5bb2c600d74824f742";
+const EXCHANGERATE_API_KEY = process.env.EXCHANGERATE_API_KEY || "acf8292c20a6f49789feba08";
+const OPEN_EXCHANGE_APP_ID = process.env.OPEN_EXCHANGE_APP_ID || "9a477dfc12504d3b9cabdc9f233ca135";
+const FIXER_API_KEY = process.env.FIXER_API_KEY || "944614a5c8afb31c1354ce7773a9d382";
+
 app.use(cors({
   origin: '*', // Allow all origins
   methods: ['GET', 'POST'], // Allowed methods
@@ -166,13 +172,26 @@ async function fetchAndSendRates(ws = null) {
     const now = new Date();
     const lastUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
     
-    // If we've never fetched or it's been more than 12 hours
-    if (!lastUpdate || (now - lastUpdate) > 12 * 60 * 60 * 1000) {
+    // If we've never fetched or it's been more than 1 hour (Open Exchange has generous free tier)
+    if (!lastUpdate || (now - lastUpdate) > 1 * 60 * 60 * 1000) {
       console.log('Fetching fresh market rate from API');
       try {
-        await fetchMarketRate();
-      } catch (error) {
-        console.log('Error fetching market rate, using cached value:', error.message);
+        // Try Open Exchange Rates first
+        await fetchOpenExchangeRate();
+      } catch (openExchangeError) {
+        console.log('Open Exchange error:', openExchangeError.message);
+        try {
+          // Then try Exchange Rate API
+          await fetchExchangeRateAPI();
+        } catch (exchangeRateError) {
+          console.log('Exchange Rate API error:', exchangeRateError.message);
+          try {
+            // Finally try Fixer as last resort
+            await fetchFixerRate();
+          } catch (fixerError) {
+            console.log('All APIs failed, using cached value:', fixerError.message);
+          }
+        }
       }
     } else {
       console.log('Using cached market rate to avoid rate limiting');
@@ -213,7 +232,14 @@ async function fetchAndSendRates(ws = null) {
 async function fetchValrRate() {
   try {
     console.log('Fetching fresh VALR rate');
-    const response = await fetch('https://api.valr.com/v1/public/USDCZAR/marketsummary');
+    
+    // Configure headers with API key if provided
+    const headers = {};
+    if (VALR_API_KEY) {
+      headers['X-Api-Key'] = VALR_API_KEY;
+    }
+    
+    const response = await fetch('https://api.valr.com/v1/public/USDCZAR/marketsummary', { headers });
     if (!response.ok) {
       throw new Error(`VALR API error: ${response.statusText}`);
     }
@@ -228,28 +254,90 @@ async function fetchValrRate() {
   }
 }
 
-// Fetch market rate from Exchange Rate API - rate limited
-async function fetchMarketRate() {
+// Fetch market rate from Open Exchange Rates API
+async function fetchOpenExchangeRate() {
   try {
-    console.log('Fetching exchange rate from API');
-    const response = await fetch(`https://v6.exchangerate-api.com/v6/${process.env.EXCHANGERATE_API_KEY}/latest/USD`);
+    console.log('Fetching exchange rate from Open Exchange Rates API');
+    const response = await fetch(`https://openexchangerates.org/api/latest.json?app_id=${OPEN_EXCHANGE_APP_ID}&symbols=ZAR`);
+    if (!response.ok) {
+      throw new Error(`Open Exchange Rates API error: ${response.statusText}`);
+    }
+    const data = await response.json();
+    
+    if (!data.rates || !data.rates.ZAR) {
+      throw new Error('ZAR rate not found in Open Exchange response');
+    }
+    
+    ratesCache.marketRate = data.rates.ZAR;
+    ratesCache.lastMarketUpdate = new Date().toISOString();
+    saveCache();
+    console.log('Updated market rate from Open Exchange:', ratesCache.marketRate);
+    return ratesCache.marketRate;
+  } catch (error) {
+    console.error('Error fetching from Open Exchange:', error);
+    throw error;
+  }
+}
+
+// Fetch market rate from Exchange Rate API
+async function fetchExchangeRateAPI() {
+  try {
+    console.log('Fetching exchange rate from Exchange Rate API');
+    const response = await fetch(`https://v6.exchangerate-api.com/v6/${EXCHANGERATE_API_KEY}/latest/USD`);
     if (!response.ok) {
       throw new Error(`Exchange Rate API error: ${response.statusText}`);
     }
     const data = await response.json();
+    
+    if (data.result !== 'success') {
+      throw new Error(`Exchange Rate API error: ${data.error || 'Unknown error'}`);
+    }
+    
+    if (!data.conversion_rates || !data.conversion_rates.ZAR) {
+      throw new Error('ZAR rate not found in Exchange Rate API response');
+    }
+    
     ratesCache.marketRate = data.conversion_rates.ZAR;
     ratesCache.lastMarketUpdate = new Date().toISOString();
     saveCache();
+    console.log('Updated market rate from Exchange Rate API:', ratesCache.marketRate);
     return ratesCache.marketRate;
   } catch (error) {
-    console.error('Error fetching exchange rate:', error);
-    // Keep using the last successful rate if available
-    if (ratesCache.marketRate === null) {
-      // If we've never had a successful rate, use a reasonable estimate
-      ratesCache.marketRate = 18.5; // Approximate USD/ZAR rate
-      ratesCache.lastMarketUpdate = new Date().toISOString();
-      saveCache();
+    console.error('Error fetching from Exchange Rate API:', error);
+    throw error;
+  }
+}
+
+// Fetch market rate from Fixer API (as backup)
+async function fetchFixerRate() {
+  try {
+    console.log('Fetching exchange rate from Fixer API (backup)');
+    const response = await fetch(`http://data.fixer.io/api/latest?access_key=${FIXER_API_KEY}&symbols=ZAR,USD`);
+    if (!response.ok) {
+      throw new Error(`Fixer API error: ${response.statusText}`);
     }
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(`Fixer API error: ${data.error?.info || 'Unknown error'}`);
+    }
+    
+    if (!data.rates || !data.rates.ZAR || !data.rates.USD) {
+      throw new Error('Required rates not found in Fixer response');
+    }
+    
+    // Fixer base currency is EUR, so we need to calculate USD/ZAR
+    const zarPerEur = data.rates.ZAR;
+    const usdPerEur = data.rates.USD;
+    const zarPerUsd = zarPerEur / usdPerEur;
+    
+    ratesCache.marketRate = zarPerUsd;
+    ratesCache.lastMarketUpdate = new Date().toISOString();
+    saveCache();
+    console.log('Updated market rate from Fixer:', ratesCache.marketRate);
+    return ratesCache.marketRate;
+  } catch (error) {
+    console.error('Error fetching from Fixer:', error);
     throw error;
   }
 }
@@ -272,13 +360,21 @@ app.get('/api/rates', async (req, res) => {
     const now = new Date();
     const lastUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
     
-    // If we've never fetched or it's been more than 12 hours
-    if (!lastUpdate || (now - lastUpdate) > 12 * 60 * 60 * 1000) {
+    // If we've never fetched or it's been more than 1 hour
+    if (!lastUpdate || (now - lastUpdate) > 1 * 60 * 60 * 1000) {
       try {
-        await fetchMarketRate();
-      } catch (error) {
-        console.error('Error fetching market rate for /api/rates:', error);
-        // Continue with cached rate
+        // Try APIs in sequence
+        await fetchOpenExchangeRate();
+      } catch (openExchangeError) {
+        try {
+          await fetchExchangeRateAPI();
+        } catch (exchangeRateError) {
+          try {
+            await fetchFixerRate();
+          } catch (fixerError) {
+            console.log('All APIs failed, using cached rate if available');
+          }
+        }
       }
     }
     
@@ -308,7 +404,14 @@ app.get('/api/rates', async (req, res) => {
 app.get('/api/valr_rate', async (req, res) => {
   try {
     console.log('Fetching fresh VALR rate for API endpoint');
-    const response = await fetch('https://api.valr.com/v1/public/USDCZAR/marketsummary');
+    
+    // Configure headers with API key if provided
+    const headers = {};
+    if (VALR_API_KEY) {
+      headers['X-Api-Key'] = VALR_API_KEY;
+    }
+    
+    const response = await fetch('https://api.valr.com/v1/public/USDCZAR/marketsummary', { headers });
     if (!response.ok) {
       throw new Error(`VALR API error: ${response.statusText}`);
     }
@@ -326,19 +429,27 @@ app.get('/api/valr_rate', async (req, res) => {
   }
 });
 
-// Exchange rate endpoint - rate limited
+// Exchange rate endpoint
 app.get('/api/exchange_rate', async (req, res) => {
   try {
     const now = new Date();
     const lastUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
     
     // Only fetch a fresh rate if it's been a while
-    if (!lastUpdate || (now - lastUpdate) > 12 * 60 * 60 * 1000) {
+    if (!lastUpdate || (now - lastUpdate) > 1 * 60 * 60 * 1000) {
       try {
-        await fetchMarketRate();
-      } catch (error) {
-        // Continue with cached value
-        console.error('Using cached market rate due to API error:', error);
+        // Try APIs in sequence
+        await fetchOpenExchangeRate();
+      } catch (openExchangeError) {
+        try {
+          await fetchExchangeRateAPI();
+        } catch (exchangeRateError) {
+          try {
+            await fetchFixerRate();
+          } catch (fixerError) {
+            console.log('All APIs failed, using cached rate if available');
+          }
+        }
       }
     } else {
       console.log('Using cached market rate to avoid rate limiting');
@@ -352,15 +463,10 @@ app.get('/api/exchange_rate', async (req, res) => {
       return res.status(500).json({ error: 'No market rate available' });
     }
     
-    // Return in the same format as the Exchange Rate API would
+    // Return in a compatible format
     res.json({
       result: 'success',
-      documentation: 'https://www.exchangerate-api.com/docs',
-      terms_of_use: 'https://www.exchangerate-api.com/terms',
-      time_last_update_unix: Math.floor(new Date(ratesCache.lastMarketUpdate).getTime() / 1000),
       time_last_update_utc: ratesCache.lastMarketUpdate,
-      time_next_update_unix: Math.floor(new Date(ratesCache.lastMarketUpdate).getTime() / 1000) + 24 * 60 * 60,
-      time_next_update_utc: new Date(new Date(ratesCache.lastMarketUpdate).getTime() + 24 * 60 * 60 * 1000).toISOString(),
       base_code: 'USD',
       conversion_rates: {
         ZAR: marketRate

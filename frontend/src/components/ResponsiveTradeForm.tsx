@@ -49,8 +49,8 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
   const currentYear = new Date().getFullYear();
   const CAPITEC_FEE = 500;
   const [userSettings, setUserSettings] = useState<UserSettings>({
-    initialInvestment: 50000,
-    usdPurchased: 2500,
+    initialInvestment: 250000,
+    usdPurchased: 10000,
     defaultWireTransferFee: 0.13,
     defaultMinWireTransferFee: 10,
     defaultWithdrawalFee: 30
@@ -434,7 +434,7 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                     required
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   >
-                    <option value="">Select an Allowance</option>
+                    <option value="">Select an Allowance Type</option>
                     <option value="SDA">Single Discretionary Allowance (R1,000,000)</option>
                     <option value="foreign">Foreign Investment Allowance (R10,000,000)</option>
                   </select>

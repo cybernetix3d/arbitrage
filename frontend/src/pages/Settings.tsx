@@ -9,6 +9,7 @@ import { Save, RotateCw, Check, Mail, Lock, User, Moon, AlertCircle, DollarSign,
 interface PinData {
   allowedAmount: number;
   usedAmount: number;
+  allowanceType: string;
   createdAt: string;
   expiresAt: string;
 }
@@ -315,22 +316,23 @@ function Settings() {
       const newPinData: PinData = {
         allowedAmount: pinForm.allowedAmount,
         usedAmount: 0,
+        allowanceType: "foreign", // Add this line to set the allowance type to "foreign"
         createdAt: new Date().toISOString(),
         expiresAt: new Date(currentYear + 1, 0, 1).toISOString() // Expires next year Jan 1
       };
-
+  
       const pinRef = ref(database, `userPins/${currentUser.uid}/${pinForm.pinNumber}`);
       await set(pinRef, newPinData);
-
+  
       // Update local state to include the new PIN
       setUserPins((prevPins) => ({
         ...prevPins,
         [pinForm.pinNumber]: newPinData
       }));
-
+  
       // Reset the form
       setPinForm({ pinNumber: '', allowedAmount: 0 });
-
+  
       // Show success message
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);

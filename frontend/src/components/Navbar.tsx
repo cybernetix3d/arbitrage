@@ -27,7 +27,7 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo and Brand */}
           <Link to="/" className="text-xl font-bold text-white flex items-center">
-            NumbaGoUp
+            Harbitrage
           </Link>
 
           {/* Desktop Navigation - Hidden on mobile */}

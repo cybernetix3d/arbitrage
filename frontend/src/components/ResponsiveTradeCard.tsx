@@ -12,6 +12,7 @@ interface Trade {
   spread: number;
   profitZAR: number;
   profitPercentage: number;
+  selectedPin: string;
   status: 'open' | 'closed';
   notes?: string;
 }
@@ -54,6 +55,9 @@ const ResponsiveTradeCard: React.FC<ResponsiveTradeCardProps> = ({
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {new Date(trade.tradeDate).toLocaleDateString()}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            PIN: {trade.selectedPin}
           </p>
         </div>
         <div className="flex space-x-2">

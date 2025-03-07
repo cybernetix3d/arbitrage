@@ -424,22 +424,6 @@ function Settings() {
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Profile Information</h2>
           
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                <div className="flex items-center">
-                  <User className="w-4 h-4 mr-2" />
-                  Display Name
-                </div>
-              </label>
-              <input
-                type="text"
-                name="displayName"
-                value={authFormData.displayName}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                placeholder="Your display name"
-              />
-            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -501,28 +485,6 @@ function Settings() {
               <Lock className="-ml-1 mr-2 h-4 w-4" />
               Send Password Reset Email
             </button>
-          </div>
-        </div>
-        
-        {/* Application Settings */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 sm:p-6">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Application Settings</h2>
-          
-          <div className="space-y-4">
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="darkMode"
-                id="darkMode"
-                checked={formData.darkMode}
-                onChange={handleInputChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <label htmlFor="darkMode" className="ml-2 flex items-center text-sm text-gray-700 dark:text-gray-300">
-                <Moon className="w-4 h-4 mr-2" />
-                Dark Mode
-              </label>
-            </div>
           </div>
         </div>
         

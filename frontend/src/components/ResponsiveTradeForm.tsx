@@ -98,7 +98,7 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
     ? (profitZAR / formData.initialZAR) * 100
     : 0;
 
-  // Data loading effect
+  // Data loading effect – run only on mount or mode change
   useEffect(() => {
     if (!currentUser) return;
 
@@ -155,11 +155,14 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
 
             // Calculate USD if we have initialZAR and marketRate
             if (!userChangedMarketRate && ratesData.marketRate > 0) {
-              const usd = formData.initialZAR / ratesData.marketRate;
-              setFormData(prev => ({
-                ...prev,
-                usdPurchased: usd
-              }));
+              const currentInitialZAR = formData.initialZAR || 0;
+              if (currentInitialZAR > 0) {
+                const usd = currentInitialZAR / ratesData.marketRate;
+                setFormData(prev => ({
+                  ...prev,
+                  usdPurchased: usd
+                }));
+              }
             }
           }
         }
@@ -206,7 +209,8 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
     };
 
     loadData();
-  }, [currentUser, isEditMode, tradeId, userSettings.defaultWithdrawalFee, isClosingTrade, userChangedMarketRate, formData.initialZAR]);
+  }, [currentUser, isEditMode, tradeId, isClosingTrade]);
+  // Removed formData.initialZAR and userChangedMarketRate from dependencies
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -539,8 +543,8 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                   required
                   min="0"
                   step="any"
-                  disabled={isClosingTrade}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-70 disabled:cursor-not-allowed"
+                  // For new trades, leave editable; for edit/close, add disabled={isEditMode || isClosingTrade} if desired.
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 />
               </div>
               <div>

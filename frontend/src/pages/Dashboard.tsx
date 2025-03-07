@@ -325,66 +325,81 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Allowance Summary */}
-      <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Allowances</h2>
-        <div className="mt-4">
-          <h3 className="text-md font-medium text-gray-900 dark:text-white">Annual Allowance Remaining</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Foreign: R {(10000000 - annualAllowance.foreignUsed).toLocaleString()}
-          </p>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            SDA: R {(1000000 - annualAllowance.SDAUsed).toLocaleString()}
-          </p>
+      {/* Replace your existing Allowance Summary and Exchange Rates sections with this block */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Allowances */}
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Allowances</h2>
+          <div className="mt-4">
+            <h3 className="text-md font-medium text-gray-900 dark:text-white">Annual Allowance Remaining</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Foreign: R {(10000000 - annualAllowance.foreignUsed).toLocaleString()}
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              SDA: R {(1000000 - annualAllowance.SDAUsed).toLocaleString()}
+            </p>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-md font-medium text-gray-900 dark:text-white">Your PIN Allowances</h3>
+            {Object.keys(pins).length === 0 ? (
+              <p className="text-sm text-gray-600 dark:text-gray-400">No PINs available</p>
+            ) : (
+              Object.entries(pins).map(([pin, data]) => (
+                <p key={pin} className="text-sm text-gray-600 dark:text-gray-400">
+                  PIN {pin}: Remaining R {(data.allowedAmount - data.usedAmount).toLocaleString()}
+                </p>
+              ))
+            )}
+          </div>
         </div>
-        <div className="mt-4">
-          <h3 className="text-md font-medium text-gray-900 dark:text-white">Your PIN Allowances</h3>
-          {Object.keys(pins).length === 0 ? (
-            <p className="text-sm text-gray-600 dark:text-gray-400">No PINs available</p>
-          ) : (
-            Object.entries(pins).map(([pin, data]) => (
-              <p key={pin} className="text-sm text-gray-600 dark:text-gray-400">
-                PIN {pin}: Remaining R {(data.allowedAmount - data.usedAmount).toLocaleString()}
-              </p>
-            ))
-          )}
-        </div>
-      </div>
 
-      {/* Exchange Rates */}
-      <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Exchange Rates</h2>
-          <span className="text-xs text-gray-500">Last updated: {new Date(rateData.lastUpdated).toLocaleString()}</span>
-        </div>
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 dark:text-gray-400">VALR Rate (USDC/ZAR):</span>
-            <span className="font-medium text-gray-900 dark:text-white">R {rateData.valrRate.toFixed(4)}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 dark:text-gray-400">Market Rate (ZAR/USD):</span>
-            <span className="font-medium text-gray-900 dark:text-white">R {rateData.marketRate.toFixed(4)}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 dark:text-gray-400">Current Spread:</span>
-            <span className={`font-medium ${rateData.spread > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {rateData.spread.toFixed(2)}%
+        {/* Exchange Rates */}
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Exchange Rates</h2>
+            <span className="text-xs text-gray-500">
+              Last updated: {new Date(rateData.lastUpdated).toLocaleString()}
             </span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 dark:text-gray-400">Wire Transfer Fee:</span>
-            <span className="font-medium text-gray-900 dark:text-white">
-              {userData.defaultWireTransferFee}% (min ${userData.defaultMinWireTransferFee})
-            </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 dark:text-gray-400">Withdrawal Fee:</span>
-            <span className="font-medium text-gray-900 dark:text-white">R {userData.defaultWithdrawalFee}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 dark:text-gray-400">Capitec Fee:</span>
-            <span className="font-medium text-gray-900 dark:text-white">R {capitecFee}</span>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600 dark:text-gray-400">VALR Rate (USDC/ZAR):</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                R {rateData.valrRate.toFixed(4)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600 dark:text-gray-400">Market Rate (ZAR/USD):</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                R {rateData.marketRate.toFixed(4)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600 dark:text-gray-400">Current Spread:</span>
+              <span
+                className={`font-medium ${
+                  rateData.spread > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                }`}
+              >
+                {rateData.spread.toFixed(2)}%
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600 dark:text-gray-400">Wire Transfer Fee:</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                {userData.defaultWireTransferFee}% (min ${userData.defaultMinWireTransferFee})
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600 dark:text-gray-400">Withdrawal Fee:</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                R {userData.defaultWithdrawalFee}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600 dark:text-gray-400">Capitec Fee:</span>
+              <span className="font-medium text-gray-900 dark:text-white">R {capitecFee}</span>
+            </div>
           </div>
         </div>
       </div>

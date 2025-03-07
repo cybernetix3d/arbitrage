@@ -84,9 +84,9 @@ function Trades() {
     if (trades.length === 0) return;
     
     const csvContent = [
-      // CSV Header (PIN column instead of Tax Ref)
+      // CSV Header including PIN
       ["Trade Name", "Date", "Initial ZAR", "USD Purchased", "VALR Rate", "Market Rate", 
-      "Spread", "Wire Fee %", "Withdrawal Fee", "Final ZAR", "Profit ZAR", "ROI %", "PIN", "Notes"].join(","),
+       "Spread", "Wire Fee %", "Withdrawal Fee", "Final ZAR", "Profit ZAR", "ROI %", "PIN", "Notes"].join(","),
       
       // CSV Data rows
       ...trades.map(trade => [
@@ -204,6 +204,7 @@ function Trades() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">USD</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">VALR Rate</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Market Rate</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">PIN</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Profit</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ROI</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
@@ -229,6 +230,9 @@ function Trades() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                         {trade.marketRate.toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        {trade.selectedPin}
                       </td>
                       <td className={`px-6 py-4 whitespace-nowrap text-sm ${trade.profitZAR >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                         R {trade.profitZAR.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

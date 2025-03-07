@@ -14,7 +14,10 @@ const RateService: React.FC = () => {
       wsRef.current.close();
     }
 
-    const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:5000';
+    // Convert https:// to wss:// if needed
+    let wsUrl = 'wss://arbitrage-server-5zxb.onrender.com';
+    console.log('Connecting to WebSocket:', wsUrl);
+    
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -42,14 +45,18 @@ const RateService: React.FC = () => {
           const { valrRate, marketRate, spread, lastUpdated } = message.data;
           
           // Update Firebase with the received data
-          const ratesRef = ref(database, 'currentRates');
-          set(ratesRef, {
-            valrRate,
-            marketRate,
-            spread,
-            lastUpdated
-          });
-          console.log('RateService: updated Firebase currentRates via WebSocket');
+          try {
+            const ratesRef = ref(database, 'currentRates');
+            set(ratesRef, {
+              valrRate,
+              marketRate,
+              spread,
+              lastUpdated
+            });
+            console.log('Updated Firebase via WebSocket');
+          } catch (error) {
+            console.error('Firebase error:', error);
+          }
         } else if (message.type === 'error') {
           console.error('WebSocket error:', message.data.message);
         }
@@ -65,7 +72,6 @@ const RateService: React.FC = () => {
       
       // Attempt to reconnect after a delay
       reconnectTimeoutRef.current = setTimeout(() => {
-        console.log('Attempting to reconnect WebSocket...');
         connectWebSocket();
       }, 5000); // Try to reconnect after 5 seconds
     };
@@ -77,52 +83,52 @@ const RateService: React.FC = () => {
     };
   }, []);
 
-  // Fallback HTTP method in case WebSocket fails
+  // HTTP fetch as backup
   const fetchRatesHttp = useCallback(async () => {
     try {
-      const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || 'http://localhost:5000';
-      const baseUrl = wsUrl.replace('wss:', 'https:').replace('ws:', 'http:');
+      const apiBaseUrl = 'https://arbitrage-server-5zxb.onrender.com';
       
-      // Fetch VALR rate via your proxy endpoint
-      const valrResponse = await fetch(`${baseUrl}/api/valr_rate`);
-      if (!valrResponse.ok) throw new Error('Failed to fetch VALR rate from proxy');
-      const valrData = await valrResponse.json();
-      const valrRate = parseFloat(valrData.lastTradedPrice);
-
-      // Fetch market rate from Exchange Rate API
-      const exchangeRateResponse = await fetch(`${baseUrl}/api/exchange_rate`);
-      if (!exchangeRateResponse.ok) throw new Error('Failed to fetch exchange rate');
-      const exchangeRateData = await exchangeRateResponse.json();
-      const marketRate = exchangeRateData.conversion_rates.ZAR;
-
-      const spread = ((valrRate / marketRate) - 1) * 100;
-
-      const ratesRef = ref(database, 'currentRates');
-      await set(ratesRef, {
-        valrRate,
-        marketRate,
-        spread,
-        lastUpdated: new Date().toISOString()
-      });
-      console.log('RateService: updated Firebase currentRates via HTTP fallback');
+      console.log('Fetching rates via HTTP');
+      const response = await fetch(`${apiBaseUrl}/api/rates`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch rates: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('Received rate data:', data);
+      
+      // Update Firebase
+      try {
+        const ratesRef = ref(database, 'currentRates');
+        await set(ratesRef, data);
+        console.log('Updated Firebase via HTTP');
+      } catch (error) {
+        console.error('Firebase error:', error);
+      }
     } catch (error) {
-      console.error('Error updating rates via HTTP:', error);
+      console.error('Error fetching rates via HTTP:', error);
     }
   }, []);
 
   useEffect(() => {
-    // Initialize WebSocket connection
+    console.log('RateService starting...');
+    
+    // Start with WebSocket connection
     connectWebSocket();
+    
+    // Also try HTTP right away as backup
+    fetchRatesHttp();
 
-    // Set up fallback mechanism using HTTP if WebSocket is disconnected for too long
+    // Set up periodic HTTP check if WebSocket fails
     const httpFallbackInterval = setInterval(() => {
       if (!isConnected) {
-        console.log('Using HTTP fallback to update rates');
+        console.log('WebSocket not connected, using HTTP fallback');
         fetchRatesHttp();
       }
-    }, 1 * 60 * 1000); // Check every 1 minute
+    }, 60000); // Check every minute
 
-    // Clean up on component unmount
+    // Clean up
     return () => {
       if (wsRef.current) {
         wsRef.current.close();

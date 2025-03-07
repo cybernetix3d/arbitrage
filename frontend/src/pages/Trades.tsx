@@ -3,7 +3,7 @@ import { Plus, FileDown, Search, Edit, Trash2, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { database } from '../lib/firebase';
 import { ref, onValue, remove } from 'firebase/database';
-import TradeForm from '../components/TradeForm';
+import ResponsiveTradeForm from '../components/ResponsiveTradeForm';
 import ResponsiveTradeCard from '../components/ResponsiveTradeCard';
 
 interface Trade {
@@ -20,7 +20,7 @@ interface Trade {
   finalZAR: number;
   profitZAR: number;
   profitPercentage: number;
-  taxPin: string;
+  selectedPin: string;
   notes: string;
   createdAt: string;
   status: 'open' | 'closed';
@@ -84,9 +84,9 @@ function Trades() {
     if (trades.length === 0) return;
     
     const csvContent = [
-      // CSV Header
+      // CSV Header (PIN column instead of Tax Ref)
       ["Trade Name", "Date", "Initial ZAR", "USD Purchased", "VALR Rate", "Market Rate", 
-      "Spread", "Wire Fee %", "Withdrawal Fee", "Final ZAR", "Profit ZAR", "ROI %", "Tax Ref", "Notes"].join(","),
+      "Spread", "Wire Fee %", "Withdrawal Fee", "Final ZAR", "Profit ZAR", "ROI %", "PIN", "Notes"].join(","),
       
       // CSV Data rows
       ...trades.map(trade => [
@@ -102,7 +102,7 @@ function Trades() {
         trade.finalZAR,
         trade.profitZAR,
         trade.profitPercentage,
-        `"${trade.taxPin}"`,
+        `"${trade.selectedPin}"`,
         `"${trade.notes.replace(/"/g, '""')}"`
       ].join(","))
     ].join("\n");
@@ -121,7 +121,7 @@ function Trades() {
   // Filter trades based on search term
   const filteredTrades = trades.filter(trade => 
     trade.tradeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    trade.taxPin.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    trade.selectedPin.toLowerCase().includes(searchTerm.toLowerCase()) ||
     trade.notes.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -171,7 +171,7 @@ function Trades() {
           <input
             type="text"
             className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
-            placeholder="Search trades by name, tax reference, or notes..."
+            placeholder="Search trades by name, PIN, or notes..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -291,7 +291,7 @@ function Trades() {
       )}
 
       {showTradeForm && (
-        <TradeForm 
+        <ResponsiveTradeForm 
           onClose={() => setShowTradeForm(false)} 
           onTradeAdded={() => {
             setShowTradeForm(false);

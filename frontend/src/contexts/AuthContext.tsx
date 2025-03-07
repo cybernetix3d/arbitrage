@@ -5,7 +5,11 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 
@@ -13,6 +17,7 @@ interface AuthContextType {
   currentUser: User | null;
   login: (email: string, password: string) => Promise<UserCredential>;
   signup: (email: string, password: string) => Promise<UserCredential>;
+  loginWithGoogle: () => Promise<UserCredential | void>;
   logout: () => Promise<void>;
   loading: boolean;
 }
@@ -37,6 +42,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
+    // Handle redirect result on initial mount (for mobile devices)
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          setCurrentUser(result.user);
+        }
+      })
+      .catch((error) => {
+        console.error("Redirect sign-in error:", error);
+      });
+
     return unsubscribe;
   }, []);
 
@@ -48,6 +64,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return signInWithEmailAndPassword(auth, email, password);
   };
 
+  const loginWithGoogle = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      // Optional: Add scopes if you need additional access
+      // provider.addScope('https://www.googleapis.com/auth/contacts.readonly');
+      
+      // On desktop, use popup (better UX)
+      if (window.innerWidth > 768) {
+        return await signInWithPopup(auth, provider);
+      } 
+      // On mobile, use redirect (more reliable)
+      else {
+        await signInWithRedirect(auth, provider);
+        // The redirect result will be handled in the useEffect
+      }
+    } catch (error) {
+      console.error("Google sign-in error:", error);
+      throw error;
+    }
+  };
+
   const logout = () => {
     return signOut(auth);
   };
@@ -56,6 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     currentUser,
     login,
     signup,
+    loginWithGoogle,
     logout,
     loading
   };

@@ -384,23 +384,8 @@ function Dashboard() {
                 {rateData.spread.toFixed(2)}%
               </span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600 dark:text-gray-400">Wire Transfer Fee:</span>
-              <span className="font-medium text-gray-900 dark:text-white">
-                {userData.defaultWireTransferFee}% (min ${userData.defaultMinWireTransferFee})
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600 dark:text-gray-400">Withdrawal Fee:</span>
-              <span className="font-medium text-gray-900 dark:text-white">
-                R {userData.defaultWithdrawalFee}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600 dark:text-gray-400">Capitec Fee:</span>
-              <span className="font-medium text-gray-900 dark:text-white">R {capitecFee}</span>
-            </div>
           </div>
+          
         </div>
       </div>
 

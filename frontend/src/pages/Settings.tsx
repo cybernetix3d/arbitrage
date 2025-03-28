@@ -3,8 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { database } from '../lib/firebase';
 import { ref, get, set, update, remove } from 'firebase/database';
 import { auth } from '../lib/firebase';
-import { updateEmail, updatePassword, sendPasswordResetEmail, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { Save, RotateCw, Check, Mail, Lock, User, Moon, AlertCircle, DollarSign, RefreshCw, Plus, Trash2 } from 'lucide-react';
+import { updateEmail, sendPasswordResetEmail, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { Save, RotateCw, Check, Mail, Lock, AlertCircle, Plus, Trash2 } from 'lucide-react';
 
 interface PinData {
   allowedAmount: number;

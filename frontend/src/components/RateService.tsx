@@ -15,7 +15,7 @@ const RateService: React.FC = () => {
     }
 
     // Convert https:// to wss:// if needed
-    let wsUrl = 'wss://arbitrage-server-5zxb.onrender.com';
+    const wsUrl = 'wss://arbitrage-dw9h.onrender.com';
     console.log('Connecting to WebSocket:', wsUrl);
     
     const ws = new WebSocket(wsUrl);
@@ -86,7 +86,7 @@ const RateService: React.FC = () => {
   // HTTP fetch as backup
   const fetchRatesHttp = useCallback(async () => {
     try {
-      const apiBaseUrl = 'https://arbitrage-server-5zxb.onrender.com';
+      const apiBaseUrl = 'https://arbitrage-dw9h.onrender.com';
       
       console.log('Fetching rates via HTTP');
       const response = await fetch(`${apiBaseUrl}/api/rates`);

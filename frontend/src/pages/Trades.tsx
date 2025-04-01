@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, FileDown, Search, Edit, Trash2, X, ChevronDown, Filter, SortDesc, ArrowDown, ArrowUp } from 'lucide-react';
+import { Plus, FileDown, Search, Edit, Trash2, X, ChevronDown, Filter, ArrowDown, ArrowUp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { database } from '../lib/firebase';
 import { ref, onValue, remove } from 'firebase/database';

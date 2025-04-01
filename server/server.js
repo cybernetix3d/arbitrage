@@ -57,6 +57,18 @@ try {
   console.error('Error loading cache file:', error);
 }
 
+// Optimize cache saving to reduce disk I/O
+let cacheIsDirty = false;
+function saveCache() {
+  if (!cacheIsDirty) return;
+  try {
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(ratesCache));
+    cacheIsDirty = false;
+  } catch (error) {
+    console.error('Error saving cache:', error);
+  }
+}
+
 // Add a route to manually set market rate
 app.post('/api/set_market_rate', (req, res) => {
   const { marketRate } = req.body;
@@ -69,26 +81,14 @@ app.post('/api/set_market_rate', (req, res) => {
   ratesCache.lastMarketUpdate = new Date().toISOString();
   
   // Save to cache file
-  try {
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(ratesCache));
-  } catch (error) {
-    console.error('Error saving cache file:', error);
-  }
+  cacheIsDirty = true;
+  saveCache();
   
   res.json({ success: true, marketRate: ratesCache.manualMarketRate });
   
   // Broadcast update to all connected clients
   broadcastRates();
 });
-
-// Save cache function
-function saveCache() {
-  try {
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(ratesCache));
-  } catch (error) {
-    console.error('Error saving cache:', error);
-  }
-}
 
 // Add a root route handler
 app.get('/', (req, res) => {
@@ -251,7 +251,7 @@ async function fetchValrRate() {
     const data = await response.json();
     ratesCache.valrRate = parseFloat(data.lastTradedPrice);
     ratesCache.lastValrUpdate = new Date().toISOString();
-    saveCache();
+    cacheIsDirty = true;
     return ratesCache.valrRate;
   } catch (error) {
     console.error('Error fetching VALR rate:', error);
@@ -275,6 +275,7 @@ async function fetchOpenExchangeRate() {
     
     ratesCache.marketRate = data.rates.ZAR;
     ratesCache.lastMarketUpdate = new Date().toISOString();
+    cacheIsDirty = true;
     saveCache();
     console.log('Updated market rate from Open Exchange:', ratesCache.marketRate);
     return ratesCache.marketRate;
@@ -304,6 +305,7 @@ async function fetchExchangeRateAPI() {
     
     ratesCache.marketRate = data.conversion_rates.ZAR;
     ratesCache.lastMarketUpdate = new Date().toISOString();
+    cacheIsDirty = true;
     saveCache();
     console.log('Updated market rate from Exchange Rate API:', ratesCache.marketRate);
     return ratesCache.marketRate;
@@ -338,6 +340,7 @@ async function fetchFixerRate() {
     
     ratesCache.marketRate = zarPerUsd;
     ratesCache.lastMarketUpdate = new Date().toISOString();
+    cacheIsDirty = true;
     saveCache();
     console.log('Updated market rate from Fixer:', ratesCache.marketRate);
     return ratesCache.marketRate;
@@ -425,6 +428,7 @@ app.get('/api/valr_rate', async (req, res) => {
     // Update our cache
     ratesCache.valrRate = parseFloat(data.lastTradedPrice);
     ratesCache.lastValrUpdate = new Date().toISOString();
+    cacheIsDirty = true;
     saveCache();
     
     res.json(data);
@@ -483,14 +487,20 @@ app.get('/api/exchange_rate', async (req, res) => {
   }
 });
 
-// Set up a periodic broadcast to all connected clients
-const RATE_UPDATE_INTERVAL = 1 * 60 * 1000; // 1 minute for VALR updates
+// Reduce update frequency to conserve resources
+const RATE_UPDATE_INTERVAL = 5 * 60 * 1000; // Change from 1 min to 5 mins
+
+// Add memory leak prevention
 setInterval(() => {
-  if (clients.size > 0) {
-    console.log(`Broadcasting rates to ${clients.size} clients`);
-    fetchAndSendRates();
+  if (clients.size > 100) { // Set a reasonable maximum
+    console.log(`Pruning inactive clients. Before: ${clients.size}`);
+    // Keep only active clients
+    clients.forEach(client => {
+      if (client.readyState !== 1) clients.delete(client);
+    });
+    console.log(`After pruning: ${clients.size}`);
   }
-}, RATE_UPDATE_INTERVAL);
+}, 10 * 60 * 1000); // Check every 10 minutes
 
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);

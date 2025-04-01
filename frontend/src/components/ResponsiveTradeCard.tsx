@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Edit, Trash2, ChevronsDown, ChevronsUp, CheckCircle } from 'lucide-react';
+import { Edit, Trash2, ChevronsDown, ChevronsUp } from 'lucide-react';
 
 interface Trade {
   id: string;

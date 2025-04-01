@@ -102,15 +102,26 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
         if (pinsSnap.exists()) {
           const allPins = pinsSnap.val() || {};
           setUserPins(allPins);
-          const sdaPins = Object.entries(allPins).filter(([_, pin]) => pin.allowanceType === 'SDA');
+          const sdaPins = Object.entries(allPins).filter(entry => {
+            const [, data] = entry as [string, PinData];
+            return data.allowanceType === 'SDA';
+          });
           if (sdaPins.length > 1) {
             const firstSdaKey = sdaPins[0][0];
             const filtered = Object.fromEntries(
-              Object.entries(allPins).filter(([key, pin]) => pin.allowanceType !== 'SDA' || key === firstSdaKey)
+              Object.entries(allPins).filter(entry => {
+                const [key, data] = entry as [string, PinData];
+                return data.allowanceType !== 'SDA' || key === firstSdaKey;
+              })
             );
-            setUserPins(filtered);
+            setUserPins(filtered as Record<string, PinData>);
           }
-          if (Object.values(allPins).filter((pin: any) => pin.allowanceType === 'SDA').length === 0) {
+          if (Object.values(allPins).filter(item => 
+            typeof item === 'object' && 
+            item !== null && 
+            'allowanceType' in item && 
+            (item as PinData).allowanceType === 'SDA'
+          ).length === 0) {
             const newSdaKey = `SDA-${Date.now()}`;
             const newSdaRef = ref(database, `userPins/${currentUser.uid}/${newSdaKey}`);
             await set(newSdaRef, {
@@ -122,7 +133,7 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
             });
             const updatedPinsSnap = await get(pinsRef);
             if (updatedPinsSnap.exists()) {
-              setUserPins(updatedPinsSnap.val());
+              setUserPins(updatedPinsSnap.val() as Record<string, PinData>);
             }
           }
         } else {
@@ -137,7 +148,7 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
           });
           const updatedPinsSnap = await get(pinsRef);
           if (updatedPinsSnap.exists()) {
-            setUserPins(updatedPinsSnap.val());
+            setUserPins(updatedPinsSnap.val() as Record<string, PinData>);
           }
         }
         const allowanceRef = ref(database, `userAnnualAllowance/${currentUser.uid}/${currentYear}`);
@@ -200,7 +211,7 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
       }
     };
     loadData();
-  }, [currentUser, isEditMode, tradeId, isClosingTrade]);
+  }, [currentUser, isEditMode, tradeId, isClosingTrade, currentYear, formData.initialZAR, userChangedMarketRate, userSettings.defaultWithdrawalFee]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -292,7 +303,26 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
     setLoading(true);
     setError('');
     try {
-      const tradeData: any = {
+      const tradeData: {
+        userId: string;
+        tradeName: string;
+        tradeDate: string;
+        initialZAR: number;
+        usdPurchased: number;
+        valrRate: number;
+        marketRate: number;
+        wireTransferFee: number;
+        withdrawalFee: number;
+        profitZAR: number;
+        profitPercentage: number;
+        spread: number;
+        allowanceType: string;
+        selectedPin: string;
+        notes?: string;
+        status: 'open' | 'closed';
+        createdAt?: string;
+        closedAt?: string;
+      } = {
         userId: currentUser.uid,
         tradeName: formData.tradeName || `Trade on ${formData.tradeDate}`,
         tradeDate: formData.tradeDate,
@@ -300,20 +330,16 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
         usdPurchased: formData.usdPurchased,
         valrRate: formData.valrRate,
         marketRate: formData.marketRate,
-        spread: spread,
         wireTransferFee: formData.wireTransferFee,
         withdrawalFee: formData.withdrawalFee,
-        capitecFee: CAPITEC_FEE,
-        usdAfterFee: usdAfterFee,
-        zarFromUsdc: zarFromUsdc,
-        finalZAR: finalZAR,
         profitZAR: profitZAR,
         profitPercentage: profitPercentage,
-        selectedPin: formData.selectedPin,
+        spread: spread,
         allowanceType: formData.allowanceType,
+        selectedPin: formData.selectedPin,
         notes: formData.notes,
         status: isClosingTrade ? 'closed' : formData.status,
-        updatedAt: new Date().toISOString()
+        createdAt: new Date().toISOString()
       };
       if (isClosingTrade) {
         tradeData.closedAt = new Date().toISOString();
@@ -376,11 +402,6 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
     } finally {
       setLoading(false);
     }
-  };
-
-  const getPinRemainingAllowance = (pin: string) => {
-    if (!userPins[pin]) return 0;
-    return userPins[pin].allowedAmount - userPins[pin].usedAmount;
   };
 
   return (
@@ -451,7 +472,10 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                     <option value="">Select a PIN</option>
                     {formData.allowanceType === "SDA"
                       ? (() => {
-                          const sdaPins = Object.entries(userPins).filter(([_, data]) => data.allowanceType === "SDA");
+                          const sdaPins = Object.entries(userPins).filter(entry => {
+                            const [, data] = entry as [string, PinData];
+                            return data.allowanceType === "SDA";
+                          });
                           if (sdaPins.length > 0) {
                             const [key, pin] = sdaPins[0];
                             const rem = pin.allowedAmount - pin.usedAmount;
@@ -464,7 +488,10 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                           return null;
                         })()
                       : Object.entries(userPins)
-                          .filter(([_, data]) => data.allowanceType === formData.allowanceType)
+                          .filter(entry => {
+                            const [, data] = entry as [string, PinData];
+                            return data.allowanceType === formData.allowanceType;
+                          })
                           .map(([key, pin]) => {
                             const rem = pin.allowedAmount - pin.usedAmount;
                             return (

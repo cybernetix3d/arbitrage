@@ -7,6 +7,10 @@ const RateService: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Implement exponential backoff for reconnection
+  const MAX_RECONNECT_DELAY = 60000; // 1 minute maximum
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+
   // Initialize WebSocket connection
   const connectWebSocket = useCallback(() => {
     // Close existing connection if any
@@ -70,10 +74,16 @@ const RateService: React.FC = () => {
       console.log('WebSocket connection closed');
       setIsConnected(false);
       
-      // Attempt to reconnect after a delay
+      // Exponential backoff with jitter
+      const delay = Math.min(
+        5000 * Math.pow(1.5, reconnectAttempts) + Math.random() * 1000,
+        MAX_RECONNECT_DELAY
+      );
+      setReconnectAttempts(prevAttempts => prevAttempts + 1);
+      
       reconnectTimeoutRef.current = setTimeout(() => {
         connectWebSocket();
-      }, 5000); // Try to reconnect after 5 seconds
+      }, delay);
     };
 
     // Connection error
@@ -81,7 +91,7 @@ const RateService: React.FC = () => {
       console.error('WebSocket error:', error);
       // The onclose handler will be called after this
     };
-  }, []);
+  }, [reconnectAttempts]);
 
   // HTTP fetch as backup
   const fetchRatesHttp = useCallback(async () => {

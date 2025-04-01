@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  LineChart,
   ArrowUpDown,
-  DollarSign,
   TrendingUp,
   ChevronRight,
   Clock,
@@ -11,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { database } from '../lib/firebase';
-import { ref, onValue, get, push, update } from 'firebase/database';
+import { ref, onValue } from 'firebase/database';
 import ProfitChart from '../components/ProfitChart';
 import { Link } from 'react-router-dom';
 import ResponsiveTradeForm from '../components/ResponsiveTradeForm';
@@ -46,10 +44,11 @@ interface Trade {
   finalZAR: number;
   profitZAR: number;
   profitPercentage: number;
-  taxPin: string;
+  selectedPin: string;
   status: 'open' | 'closed';
   createdAt: string;
   closedAt?: string;
+  notes?: string;
 }
 
 interface PinData {
@@ -79,7 +78,6 @@ function Dashboard() {
     profitZAR: 0,
     profitPercentage: 0,
   });
-  const [trades, setTrades] = useState<Trade[]>([]);
   const [totalLifetimeProfit, setTotalLifetimeProfit] = useState(0);
   const [openTrades, setOpenTrades] = useState<Trade[]>([]);
   const [recentClosedTrades, setRecentClosedTrades] = useState<Trade[]>([]);
@@ -141,7 +139,7 @@ function Dashboard() {
           (a, b) =>
             new Date(b.tradeDate).getTime() - new Date(a.tradeDate).getTime()
         );
-        setTrades(tradesArray);
+        
         const openTradesArr = tradesArray.filter((trade) => trade.status === 'open');
         const closedTradesArr = tradesArray.filter((trade) => trade.status === 'closed').slice(0, 5);
         setOpenTrades(openTradesArr);
@@ -151,7 +149,6 @@ function Dashboard() {
           .reduce((sum, trade) => sum + trade.profitZAR, 0);
         setTotalLifetimeProfit(totalProfit);
       } else {
-        setTrades([]);
         setOpenTrades([]);
         setRecentClosedTrades([]);
         setTotalLifetimeProfit(0);
@@ -481,7 +478,12 @@ function Dashboard() {
                 return (
                   <ResponsiveTradeCard
                     key={trade.id}
-                    trade={{ ...trade, profitZAR: liveProfit, profitPercentage: liveROI }}
+                    trade={{ 
+                      ...trade, 
+                      profitZAR: liveProfit, 
+                      profitPercentage: liveROI,
+                      selectedPin: trade.selectedPin
+                    }}
                     onEdit={() => handleEditTrade(trade.id)}
                     onDelete={() => { /* Not implemented in dashboard */ }}
                     onClose={handleOpenCloseTradeForm}
@@ -550,7 +552,12 @@ function Dashboard() {
           </div>
           <div className="md:hidden space-y-4">
             {recentClosedTrades.map((trade) => (
-              <ResponsiveTradeCard key={trade.id} trade={trade} onEdit={() => {}} onDelete={() => {}} />
+              <ResponsiveTradeCard 
+                key={trade.id} 
+                trade={{ ...trade, selectedPin: trade.selectedPin }} 
+                onEdit={() => {}} 
+                onDelete={() => {}} 
+              />
             ))}
           </div>
         </div>

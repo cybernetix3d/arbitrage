@@ -211,14 +211,16 @@ function Settings() {
         });
         
         return true;
-      } catch (error: any) {
-        if (error.code === 'auth/wrong-password') {
-          throw new Error("Incorrect password. Please try again.");
-        } else if (error.code === 'auth/too-many-requests') {
-          throw new Error("Too many failed attempts. Please try again later.");
-        } else {
-          throw error;
+      } catch (error: unknown) {
+        if (typeof error === 'object' && error !== null && 'code' in error) {
+          const errorWithCode = error as { code: string };
+          if (errorWithCode.code === 'auth/wrong-password') {
+            throw new Error("Incorrect password. Please try again.");
+          } else if (errorWithCode.code === 'auth/too-many-requests') {
+            throw new Error("Too many failed attempts. Please try again later.");
+          }
         }
+        throw error;
       }
     }
     
@@ -264,9 +266,9 @@ function Settings() {
       // Show success message and hide after 3 seconds
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error saving settings:", error);
-      setError(error.message || "Failed to save settings. Please try again.");
+      setError(error instanceof Error ? error.message : "Failed to save settings. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -282,9 +284,9 @@ function Settings() {
       await sendPasswordResetEmail(auth, currentUser.email);
       setResetEmailSent(true);
       setTimeout(() => setResetEmailSent(false), 5000);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error sending password reset:", error);
-      setError("Failed to send password reset email: " + error.message);
+      setError(error instanceof Error ? error.message : "Failed to send password reset email. Please try again.");
     }
   };
   
@@ -336,9 +338,9 @@ function Settings() {
       // Show success message
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error adding PIN:", error);
-      setError(error.message || "Failed to add PIN. Please try again.");
+      setError(error instanceof Error ? error.message : "Failed to add PIN. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -378,9 +380,9 @@ function Settings() {
       // Show success message
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error deleting PIN:", error);
-      setError(error.message || "Failed to delete PIN. Please try again.");
+      setError(error instanceof Error ? error.message : "Failed to delete PIN. Please try again.");
     } finally {
       setSaving(false);
     }

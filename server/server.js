@@ -7,6 +7,7 @@ import { WebSocketServer } from 'ws';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { valrRateLimiter, exchangeRateLimiter, combinedRateLimiter } from './rate-limiter.js';
 
 config(); // Load environment variables from .env
 
@@ -72,20 +73,20 @@ function saveCache() {
 // Add a route to manually set market rate
 app.post('/api/set_market_rate', (req, res) => {
   const { marketRate } = req.body;
-  
+
   if (!marketRate || isNaN(parseFloat(marketRate))) {
     return res.status(400).json({ error: 'Invalid market rate' });
   }
-  
+
   ratesCache.manualMarketRate = parseFloat(marketRate);
   ratesCache.lastMarketUpdate = new Date().toISOString();
-  
+
   // Save to cache file
   cacheIsDirty = true;
   saveCache();
-  
+
   res.json({ success: true, marketRate: ratesCache.manualMarketRate });
-  
+
   // Broadcast update to all connected clients
   broadcastRates();
 });
@@ -103,19 +104,59 @@ app.get('/health', (req, res) => {
 // Store connected clients
 const clients = new Set();
 
+// Create a rate limiter for WebSocket requests
+const wsRateLimiter = createRateLimiter(10, 1/5); // 10 requests max, refills at 1 per 5 seconds
+
 // WebSocket connection handler
 wss.on('connection', (ws) => {
   console.log('Client connected');
   clients.add(ws);
+
+  // Add client-specific properties
+  ws.lastRequestTime = Date.now();
 
   // Send initial rates when client connects
   fetchAndSendRates(ws);
 
   ws.on('message', (message) => {
     console.log('Received message:', message.toString());
-    
-    // If client sends "fetchRates", send updated rates
-    if (message.toString() === 'fetchRates') {
+
+    const now = Date.now();
+    const messageStr = message.toString();
+
+    // If client sends "fetchRates", check rate limiting before processing
+    if (messageStr === 'fetchRates') {
+      // Check if this client is making too many requests
+      if (now - ws.lastRequestTime < 5000) { // Minimum 5 seconds between requests
+        console.log('Client rate limited (too frequent requests)');
+        ws.send(JSON.stringify({
+          type: 'rate_limited',
+          data: {
+            message: 'Too many requests',
+            retryAfter: 5
+          }
+        }));
+        return;
+      }
+
+      // Check global rate limiter
+      if (!wsRateLimiter.tryConsume()) {
+        const waitTime = wsRateLimiter.getWaitTimeInMs();
+        console.log(`WebSocket rate limit exceeded. Retry after ${Math.ceil(waitTime / 1000)} seconds.`);
+        ws.send(JSON.stringify({
+          type: 'rate_limited',
+          data: {
+            message: 'Server is busy, too many requests',
+            retryAfter: Math.ceil(waitTime / 1000)
+          }
+        }));
+        return;
+      }
+
+      // Update last request time
+      ws.lastRequestTime = now;
+
+      // Process the request
       fetchAndSendRates(ws);
     }
   });
@@ -133,7 +174,7 @@ function broadcastRates() {
     type: 'rates',
     data: rates
   });
-  
+
   clients.forEach(client => {
     if (client.readyState === 1) { // Check if connection is open
       client.send(message);
@@ -145,20 +186,20 @@ function broadcastRates() {
 function prepareRatesMessage() {
   // Use the most recent market rate (manual or API)
   let marketRate = ratesCache.manualMarketRate;
-  
+
   // If no manual rate, use API rate
   if (marketRate === null) {
     marketRate = ratesCache.marketRate;
   }
-  
+
   const valrRate = ratesCache.valrRate;
-  
+
   // Calculate spread if both rates are available
   let spread = 0;
   if (valrRate !== null && marketRate !== null) {
     spread = ((valrRate / marketRate) - 1) * 100;
   }
-  
+
   return {
     valrRate,
     marketRate,
@@ -170,41 +211,61 @@ function prepareRatesMessage() {
 // Function to fetch rates and send to a specific client or all clients
 async function fetchAndSendRates(ws = null) {
   try {
-    // Always fetch VALR rate - no rate limiting needed
-    await fetchValrRate();
-    
-    // For market rate, check if we should fetch a new one
+    // Check if we have recent VALR data in cache (within last 3 minutes)
     const now = new Date();
-    const lastUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
-    
-    // If we've never fetched or it's been more than 1 hour (Open Exchange has generous free tier)
-    if (!lastUpdate || (now - lastUpdate) > 1 * 60 * 60 * 1000) {
-      console.log('Fetching fresh market rate from API');
-      try {
-        // Try Open Exchange Rates first
-        await fetchOpenExchangeRate();
-      } catch (openExchangeError) {
-        console.log('Open Exchange error:', openExchangeError.message);
+    const lastValrUpdate = ratesCache.lastValrUpdate ? new Date(ratesCache.lastValrUpdate) : null;
+    const valrCacheAge = lastValrUpdate ? now - lastValrUpdate : Infinity;
+
+    // Only fetch fresh VALR rate if cache is older than 3 minutes or doesn't exist
+    if (valrCacheAge > 3 * 60 * 1000 || ratesCache.valrRate === null) {
+      // Apply rate limiting for VALR API
+      if (valrRateLimiter.tryConsume()) {
+        await fetchValrRate();
+      } else {
+        console.log('Rate limit reached for VALR API, using cached data');
+        // If we don't have any cached data, we'll just continue with null values
+      }
+    } else {
+      console.log('Using cached VALR rate to reduce API calls');
+    }
+
+    // For market rate, check if we should fetch a new one
+    const lastMarketUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
+    const marketCacheAge = lastMarketUpdate ? now - lastMarketUpdate : Infinity;
+
+    // If we've never fetched or it's been more than 3 hours (increased from 1 hour)
+    if (marketCacheAge > 3 * 60 * 60 * 1000 || ratesCache.marketRate === null) {
+      // Apply rate limiting for exchange rate APIs
+      if (exchangeRateLimiter.tryConsume()) {
+        console.log('Fetching fresh market rate from API');
         try {
-          // Then try Exchange Rate API
-          await fetchExchangeRateAPI();
-        } catch (exchangeRateError) {
-          console.log('Exchange Rate API error:', exchangeRateError.message);
+          // Try Open Exchange Rates first
+          await fetchOpenExchangeRate();
+        } catch (openExchangeError) {
+          console.log('Open Exchange error:', openExchangeError.message);
           try {
-            // Finally try Fixer as last resort
-            await fetchFixerRate();
-          } catch (fixerError) {
-            console.log('All APIs failed, using cached value:', fixerError.message);
+            // Then try Exchange Rate API
+            await fetchExchangeRateAPI();
+          } catch (exchangeRateError) {
+            console.log('Exchange Rate API error:', exchangeRateError.message);
+            try {
+              // Finally try Fixer as last resort
+              await fetchFixerRate();
+            } catch (fixerError) {
+              console.log('All APIs failed, using cached value:', fixerError.message);
+            }
           }
         }
+      } else {
+        console.log('Rate limit reached for exchange rate APIs, using cached data');
       }
     } else {
       console.log('Using cached market rate to avoid rate limiting');
     }
-    
+
     // Prepare rates message
     const rates = prepareRatesMessage();
-    
+
     const message = JSON.stringify({
       type: 'rates',
       data: rates
@@ -226,7 +287,7 @@ async function fetchAndSendRates(ws = null) {
       type: 'error',
       data: { message: 'Failed to fetch rates' }
     });
-    
+
     if (ws) {
       ws.send(errorMessage);
     }
@@ -237,13 +298,13 @@ async function fetchAndSendRates(ws = null) {
 async function fetchValrRate() {
   try {
     console.log('Fetching fresh VALR rate');
-    
+
     // Configure headers with API key if provided
     const headers = {};
     if (VALR_API_KEY) {
       headers['X-Api-Key'] = VALR_API_KEY;
     }
-    
+
     const response = await fetch('https://api.valr.com/v1/public/USDCZAR/marketsummary', { headers });
     if (!response.ok) {
       throw new Error(`VALR API error: ${response.statusText}`);
@@ -268,11 +329,11 @@ async function fetchOpenExchangeRate() {
       throw new Error(`Open Exchange Rates API error: ${response.statusText}`);
     }
     const data = await response.json();
-    
+
     if (!data.rates || !data.rates.ZAR) {
       throw new Error('ZAR rate not found in Open Exchange response');
     }
-    
+
     ratesCache.marketRate = data.rates.ZAR;
     ratesCache.lastMarketUpdate = new Date().toISOString();
     cacheIsDirty = true;
@@ -294,15 +355,15 @@ async function fetchExchangeRateAPI() {
       throw new Error(`Exchange Rate API error: ${response.statusText}`);
     }
     const data = await response.json();
-    
+
     if (data.result !== 'success') {
       throw new Error(`Exchange Rate API error: ${data.error || 'Unknown error'}`);
     }
-    
+
     if (!data.conversion_rates || !data.conversion_rates.ZAR) {
       throw new Error('ZAR rate not found in Exchange Rate API response');
     }
-    
+
     ratesCache.marketRate = data.conversion_rates.ZAR;
     ratesCache.lastMarketUpdate = new Date().toISOString();
     cacheIsDirty = true;
@@ -324,20 +385,20 @@ async function fetchFixerRate() {
       throw new Error(`Fixer API error: ${response.statusText}`);
     }
     const data = await response.json();
-    
+
     if (!data.success) {
       throw new Error(`Fixer API error: ${data.error?.info || 'Unknown error'}`);
     }
-    
+
     if (!data.rates || !data.rates.ZAR || !data.rates.USD) {
       throw new Error('Required rates not found in Fixer response');
     }
-    
+
     // Fixer base currency is EUR, so we need to calculate USD/ZAR
     const zarPerEur = data.rates.ZAR;
     const usdPerEur = data.rates.USD;
     const zarPerUsd = zarPerEur / usdPerEur;
-    
+
     ratesCache.marketRate = zarPerUsd;
     ratesCache.lastMarketUpdate = new Date().toISOString();
     cacheIsDirty = true;
@@ -353,23 +414,41 @@ async function fetchFixerRate() {
 // Combined rates endpoint
 app.get('/api/rates', async (req, res) => {
   try {
-    // Always fetch fresh VALR rate
-    try {
-      await fetchValrRate();
-    } catch (error) {
-      console.error('Error fetching VALR rate for /api/rates:', error);
-      // If we don't have a VALR rate at all, return an error
-      if (ratesCache.valrRate === null) {
-        return res.status(500).json({ error: 'Failed to fetch VALR rate' });
-      }
+    // Apply rate limiting
+    if (!combinedRateLimiter.tryConsume()) {
+      const waitTime = combinedRateLimiter.getWaitTimeInMs();
+      console.log(`Rate limit exceeded for /api/rates. Retry after ${Math.ceil(waitTime / 1000)} seconds.`);
+      return res.status(429).json({
+        error: 'Too many requests',
+        retryAfter: Math.ceil(waitTime / 1000)
+      });
     }
-    
-    // For market rate, check if we should fetch a new one
+
+    // Check if we have recent data in cache (within last 5 minutes)
     const now = new Date();
-    const lastUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
-    
-    // If we've never fetched or it's been more than 1 hour
-    if (!lastUpdate || (now - lastUpdate) > 1 * 60 * 60 * 1000) {
+    const lastValrUpdate = ratesCache.lastValrUpdate ? new Date(ratesCache.lastValrUpdate) : null;
+    const valrCacheAge = lastValrUpdate ? now - lastValrUpdate : Infinity;
+
+    // Only fetch fresh VALR rate if cache is older than 5 minutes
+    if (valrCacheAge > 5 * 60 * 1000) {
+      try {
+        await fetchValrRate();
+      } catch (error) {
+        console.error('Error fetching VALR rate for /api/rates:', error);
+        // If we don't have a VALR rate at all, return an error
+        if (ratesCache.valrRate === null) {
+          return res.status(500).json({ error: 'Failed to fetch VALR rate' });
+        }
+      }
+    } else {
+      console.log('Using cached VALR rate to reduce API calls');
+    }
+
+    // For market rate, check if we should fetch a new one
+    const lastMarketUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
+
+    // If we've never fetched or it's been more than 2 hours (increased from 1 hour)
+    if (!lastMarketUpdate || (now - lastMarketUpdate) > 2 * 60 * 60 * 1000) {
       try {
         // Try APIs in sequence
         await fetchOpenExchangeRate();
@@ -385,17 +464,17 @@ app.get('/api/rates', async (req, res) => {
         }
       }
     }
-    
+
     // Use manual market rate if available
-    const marketRate = ratesCache.manualMarketRate !== null ? 
+    const marketRate = ratesCache.manualMarketRate !== null ?
       ratesCache.manualMarketRate : ratesCache.marketRate;
-    
+
     // Calculate spread if both rates are available
     let spread = 0;
     if (ratesCache.valrRate !== null && marketRate !== null) {
       spread = ((ratesCache.valrRate / marketRate) - 1) * 100;
     }
-    
+
     res.json({
       valrRate: ratesCache.valrRate,
       marketRate,
@@ -408,44 +487,82 @@ app.get('/api/rates', async (req, res) => {
   }
 });
 
-// VALR rate endpoint - always fetch fresh data
+// VALR rate endpoint with rate limiting
 app.get('/api/valr_rate', async (req, res) => {
   try {
-    console.log('Fetching fresh VALR rate for API endpoint');
-    
-    // Configure headers with API key if provided
-    const headers = {};
-    if (VALR_API_KEY) {
-      headers['X-Api-Key'] = VALR_API_KEY;
+    // Apply rate limiting
+    if (!valrRateLimiter.tryConsume()) {
+      const waitTime = valrRateLimiter.getWaitTimeInMs();
+      console.log(`Rate limit exceeded for /api/valr_rate. Retry after ${Math.ceil(waitTime / 1000)} seconds.`);
+      return res.status(429).json({
+        error: 'Too many requests',
+        retryAfter: Math.ceil(waitTime / 1000)
+      });
     }
-    
-    const response = await fetch('https://api.valr.com/v1/public/USDCZAR/marketsummary', { headers });
-    if (!response.ok) {
-      throw new Error(`VALR API error: ${response.statusText}`);
+
+    // Check if we have recent data in cache (within last 2 minutes)
+    const now = new Date();
+    const lastUpdate = ratesCache.lastValrUpdate ? new Date(ratesCache.lastValrUpdate) : null;
+    const cacheAge = lastUpdate ? now - lastUpdate : Infinity;
+
+    // Only fetch fresh data if cache is older than 2 minutes
+    if (cacheAge > 2 * 60 * 1000) {
+      console.log('Fetching fresh VALR rate for API endpoint');
+
+      // Configure headers with API key if provided
+      const headers = {};
+      if (VALR_API_KEY) {
+        headers['X-Api-Key'] = VALR_API_KEY;
+      }
+
+      const response = await fetch('https://api.valr.com/v1/public/USDCZAR/marketsummary', { headers });
+      if (!response.ok) {
+        throw new Error(`VALR API error: ${response.statusText}`);
+      }
+      const data = await response.json();
+
+      // Update our cache
+      ratesCache.valrRate = parseFloat(data.lastTradedPrice);
+      ratesCache.lastValrUpdate = new Date().toISOString();
+      cacheIsDirty = true;
+      saveCache();
+
+      res.json(data);
+    } else {
+      console.log('Using cached VALR rate to reduce API calls');
+
+      // Return cached data in a format similar to the API response
+      res.json({
+        currencyPair: "USDCZAR",
+        lastTradedPrice: ratesCache.valrRate.toString(),
+        cachedAt: ratesCache.lastValrUpdate,
+        fromCache: true
+      });
     }
-    const data = await response.json();
-    
-    // Update our cache
-    ratesCache.valrRate = parseFloat(data.lastTradedPrice);
-    ratesCache.lastValrUpdate = new Date().toISOString();
-    cacheIsDirty = true;
-    saveCache();
-    
-    res.json(data);
   } catch (error) {
     console.error('Error fetching VALR rate:', error);
     res.status(500).json({ error: 'Failed to fetch VALR rate' });
   }
 });
 
-// Exchange rate endpoint
+// Exchange rate endpoint with rate limiting
 app.get('/api/exchange_rate', async (req, res) => {
   try {
+    // Apply rate limiting
+    if (!exchangeRateLimiter.tryConsume()) {
+      const waitTime = exchangeRateLimiter.getWaitTimeInMs();
+      console.log(`Rate limit exceeded for /api/exchange_rate. Retry after ${Math.ceil(waitTime / 1000)} seconds.`);
+      return res.status(429).json({
+        error: 'Too many requests',
+        retryAfter: Math.ceil(waitTime / 1000)
+      });
+    }
+
     const now = new Date();
     const lastUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
-    
-    // Only fetch a fresh rate if it's been a while
-    if (!lastUpdate || (now - lastUpdate) > 1 * 60 * 60 * 1000) {
+
+    // Only fetch a fresh rate if it's been a while (increased from 1 hour to 3 hours)
+    if (!lastUpdate || (now - lastUpdate) > 3 * 60 * 60 * 1000) {
       try {
         // Try APIs in sequence
         await fetchOpenExchangeRate();
@@ -463,15 +580,15 @@ app.get('/api/exchange_rate', async (req, res) => {
     } else {
       console.log('Using cached market rate to avoid rate limiting');
     }
-    
+
     // Use manual market rate if available
-    const marketRate = ratesCache.manualMarketRate !== null ? 
+    const marketRate = ratesCache.manualMarketRate !== null ?
       ratesCache.manualMarketRate : ratesCache.marketRate;
-    
+
     if (marketRate === null) {
       return res.status(500).json({ error: 'No market rate available' });
     }
-    
+
     // Return in a compatible format
     res.json({
       result: 'success',

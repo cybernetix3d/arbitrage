@@ -21,7 +21,7 @@ const RateService: React.FC = () => {
     // Convert https:// to wss:// if needed
     const wsUrl = 'wss://arbitrage-dw9h.onrender.com';
     console.log('Connecting to WebSocket:', wsUrl);
-    
+
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -29,10 +29,10 @@ const RateService: React.FC = () => {
     ws.onopen = () => {
       console.log('WebSocket connection established');
       setIsConnected(true);
-      
+
       // Request initial rates
       ws.send('fetchRates');
-      
+
       // Clear any pending reconnect timeout
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
@@ -40,14 +40,18 @@ const RateService: React.FC = () => {
       }
     };
 
+    // Track last WebSocket fetch request time
+    const lastWsFetchRequestRef = useRef<number>(0);
+    const MIN_WS_REQUEST_INTERVAL = 5000; // Minimum 5 seconds between WebSocket requests
+
     // Listen for messages
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
-        
+
         if (message.type === 'rates') {
           const { valrRate, marketRate, spread, lastUpdated } = message.data;
-          
+
           // Update Firebase with the received data
           try {
             const ratesRef = ref(database, 'currentRates');
@@ -63,24 +67,42 @@ const RateService: React.FC = () => {
           }
         } else if (message.type === 'error') {
           console.error('WebSocket error:', message.data.message);
+        } else if (message.type === 'rate_limited') {
+          // Handle rate limiting message
+          console.log(`Rate limited by server. Retry after ${message.data.retryAfter} seconds`);
         }
       } catch (error) {
         console.error('Error processing WebSocket message:', error);
       }
     };
 
+    // Override the send method to add rate limiting
+    const originalSend = ws.send;
+    ws.send = function(data) {
+      const now = Date.now();
+
+      // Check if we've sent a request recently
+      if (now - lastWsFetchRequestRef.current < MIN_WS_REQUEST_INTERVAL) {
+        console.log('Skipping WebSocket request - too soon since last request');
+        return;
+      }
+
+      lastWsFetchRequestRef.current = now;
+      return originalSend.call(this, data);
+    };
+
     // Connection closed
     ws.onclose = () => {
       console.log('WebSocket connection closed');
       setIsConnected(false);
-      
+
       // Exponential backoff with jitter
       const delay = Math.min(
         5000 * Math.pow(1.5, reconnectAttempts) + Math.random() * 1000,
         MAX_RECONNECT_DELAY
       );
       setReconnectAttempts(prevAttempts => prevAttempts + 1);
-      
+
       reconnectTimeoutRef.current = setTimeout(() => {
         connectWebSocket();
       }, delay);
@@ -93,21 +115,41 @@ const RateService: React.FC = () => {
     };
   }, [reconnectAttempts]);
 
-  // HTTP fetch as backup
+  // Track last HTTP fetch time to prevent too frequent calls
+  const lastFetchRef = useRef<number>(0);
+  const MIN_FETCH_INTERVAL = 10000; // Minimum 10 seconds between HTTP fetches
+
+  // HTTP fetch as backup with debouncing
   const fetchRatesHttp = useCallback(async () => {
+    const now = Date.now();
+
+    // Check if we've fetched recently to avoid hammering the API
+    if (now - lastFetchRef.current < MIN_FETCH_INTERVAL) {
+      console.log('Skipping HTTP fetch - too soon since last fetch');
+      return;
+    }
+
     try {
       const apiBaseUrl = 'https://arbitrage-dw9h.onrender.com';
-      
+
       console.log('Fetching rates via HTTP');
+      lastFetchRef.current = now;
+
       const response = await fetch(`${apiBaseUrl}/api/rates`);
-      
+
       if (!response.ok) {
+        // Handle rate limiting response (HTTP 429)
+        if (response.status === 429) {
+          const data = await response.json();
+          console.log(`Rate limited. Retry after ${data.retryAfter} seconds`);
+          return;
+        }
         throw new Error(`Failed to fetch rates: ${response.status}`);
       }
-      
+
       const data = await response.json();
       console.log('Received rate data:', data);
-      
+
       // Update Firebase
       try {
         const ratesRef = ref(database, 'currentRates');
@@ -123,20 +165,21 @@ const RateService: React.FC = () => {
 
   useEffect(() => {
     console.log('RateService starting...');
-    
+
     // Start with WebSocket connection
     connectWebSocket();
-    
+
     // Also try HTTP right away as backup
     fetchRatesHttp();
 
     // Set up periodic HTTP check if WebSocket fails
+    // Increased from 1 minute to 5 minutes to reduce API calls
     const httpFallbackInterval = setInterval(() => {
       if (!isConnected) {
         console.log('WebSocket not connected, using HTTP fallback');
         fetchRatesHttp();
       }
-    }, 60000); // Check every minute
+    }, 300000); // Check every 5 minutes (increased from 60000)
 
     // Clean up
     return () => {

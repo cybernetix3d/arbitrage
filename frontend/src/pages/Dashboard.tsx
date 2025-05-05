@@ -6,8 +6,10 @@ import {
   Clock,
   CheckCircle,
   Plus,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useRates } from '../contexts/RateContext';
 import { database } from '../lib/firebase';
 import { ref, onValue } from 'firebase/database';
 import ProfitChart from '../components/ProfitChart';
@@ -60,6 +62,7 @@ interface PinData {
 
 function Dashboard() {
   const { currentUser } = useAuth();
+  const { refreshRates, isRefreshing } = useRates();
   const [loading, setLoading] = useState(true);
   const [rateData, setRateData] = useState<RateData>({
     valrRate: 0,
@@ -139,7 +142,7 @@ function Dashboard() {
           (a, b) =>
             new Date(b.tradeDate).getTime() - new Date(a.tradeDate).getTime()
         );
-        
+
         const openTradesArr = tradesArray.filter((trade) => trade.status === 'open');
         const closedTradesArr = tradesArray.filter((trade) => trade.status === 'closed').slice(0, 5);
         setOpenTrades(openTradesArr);
@@ -191,10 +194,10 @@ function Dashboard() {
       setCurrentProfit({ profitZAR: 0, profitPercentage: 0 });
       return;
     }
-    
+
     let totalInitialZAR = 0;
     let totalProfitZAR = 0;
-    
+
     // Loop through all open trades and sum up their profits
     for (const trade of openTrades) {
       const wireTransferFee = Math.max(
@@ -202,19 +205,19 @@ function Dashboard() {
         userData.defaultMinWireTransferFee
       );
       const usdAfterFee = trade.usdPurchased - wireTransferFee;
-      
+
       // Always use live VALR rate for open trades
       const currentValue = usdAfterFee * rateData.valrRate - (trade.withdrawalFee + capitecFee);
       const profit = currentValue - trade.initialZAR;
-      
+
       totalInitialZAR += trade.initialZAR;
       totalProfitZAR += profit;
     }
-    
+
     const profitPercentage = totalInitialZAR > 0 ? (totalProfitZAR / totalInitialZAR) * 100 : 0;
-    setCurrentProfit({ 
-      profitZAR: totalProfitZAR, 
-      profitPercentage 
+    setCurrentProfit({
+      profitZAR: totalProfitZAR,
+      profitPercentage
     });
   }, [rateData.valrRate, openTrades, userData.defaultMinWireTransferFee, capitecFee]);
 
@@ -354,9 +357,19 @@ function Dashboard() {
         <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-sm">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Exchange Rates</h2>
-            <span className="text-xs text-gray-500">
-              Last updated: {new Date(rateData.lastUpdated).toLocaleString()}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500">
+                Last updated: {new Date(rateData.lastUpdated).toLocaleString()}
+              </span>
+              <button
+                onClick={() => refreshRates()}
+                disabled={isRefreshing}
+                className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? 'Refreshing...' : 'Refresh Rates'}
+              </button>
+            </div>
           </div>
           <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -382,7 +395,7 @@ function Dashboard() {
               </span>
             </div>
           </div>
-          
+
         </div>
       </div>
 
@@ -478,9 +491,9 @@ function Dashboard() {
                 return (
                   <ResponsiveTradeCard
                     key={trade.id}
-                    trade={{ 
-                      ...trade, 
-                      profitZAR: liveProfit, 
+                    trade={{
+                      ...trade,
+                      profitZAR: liveProfit,
                       profitPercentage: liveROI,
                       selectedPin: trade.selectedPin
                     }}
@@ -552,11 +565,11 @@ function Dashboard() {
           </div>
           <div className="md:hidden space-y-4">
             {recentClosedTrades.map((trade) => (
-              <ResponsiveTradeCard 
-                key={trade.id} 
-                trade={{ ...trade, selectedPin: trade.selectedPin }} 
-                onEdit={() => {}} 
-                onDelete={() => {}} 
+              <ResponsiveTradeCard
+                key={trade.id}
+                trade={{ ...trade, selectedPin: trade.selectedPin }}
+                onEdit={() => {}}
+                onDelete={() => {}}
               />
             ))}
           </div>

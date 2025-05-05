@@ -1,0 +1,47 @@
+{
+  "rules": {
+    // Allow public read access to all data for now
+    ".read": true,
+    
+    // User-specific data - allow authenticated users to write to their own data
+    "userSettings": {
+      "$userId": {
+        ".write": "auth != null && auth.uid === $userId"
+      }
+    },
+    
+    "trades": {
+      "$userId": {
+        ".write": "auth != null && auth.uid === $userId"
+      }
+    },
+    
+    "profitHistory": {
+      "$userId": {
+        ".write": "auth != null && auth.uid === $userId"
+      }
+    },
+    
+    "userPins": {
+      "$userId": {
+        ".write": "auth != null && auth.uid === $userId"
+      }
+    },
+    
+    "userAnnualAllowance": {
+      "$userId": {
+        ".write": "auth != null && auth.uid === $userId"
+      }
+    },
+    
+    // Allow authenticated users to write to currentRates
+    "currentRates": {
+      ".write": "auth != null"
+    },
+    
+    // Fallback rule - allow authenticated users to write
+    "$other": {
+      ".write": "auth != null"
+    }
+  }
+}

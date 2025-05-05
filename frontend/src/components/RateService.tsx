@@ -6,6 +6,8 @@ const RateService: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastWsFetchTimeRef = useRef<number>(0);
+  const MIN_WS_REQUEST_INTERVAL = 5000; // Minimum 5 seconds between WebSocket requests
 
   // Implement exponential backoff for reconnection
   const MAX_RECONNECT_DELAY = 60000; // 1 minute maximum
@@ -30,8 +32,12 @@ const RateService: React.FC = () => {
       console.log('WebSocket connection established');
       setIsConnected(true);
 
-      // Request initial rates
-      ws.send('fetchRates');
+      // Request initial rates with rate limiting
+      const now = Date.now();
+      if (now - lastWsFetchTimeRef.current >= MIN_WS_REQUEST_INTERVAL) {
+        ws.send('fetchRates');
+        lastWsFetchTimeRef.current = now;
+      }
 
       // Clear any pending reconnect timeout
       if (reconnectTimeoutRef.current) {
@@ -39,10 +45,6 @@ const RateService: React.FC = () => {
         reconnectTimeoutRef.current = null;
       }
     };
-
-    // Track last WebSocket fetch request time
-    const lastWsFetchRequestRef = useRef<number>(0);
-    const MIN_WS_REQUEST_INTERVAL = 5000; // Minimum 5 seconds between WebSocket requests
 
     // Listen for messages
     ws.onmessage = (event) => {
@@ -76,18 +78,18 @@ const RateService: React.FC = () => {
       }
     };
 
-    // Override the send method to add rate limiting
+    // Create a rate-limited version of send
     const originalSend = ws.send;
     ws.send = function(data) {
       const now = Date.now();
 
       // Check if we've sent a request recently
-      if (now - lastWsFetchRequestRef.current < MIN_WS_REQUEST_INTERVAL) {
+      if (now - lastWsFetchTimeRef.current < MIN_WS_REQUEST_INTERVAL) {
         console.log('Skipping WebSocket request - too soon since last request');
         return;
       }
 
-      lastWsFetchRequestRef.current = now;
+      lastWsFetchTimeRef.current = now;
       return originalSend.call(this, data);
     };
 
@@ -113,18 +115,18 @@ const RateService: React.FC = () => {
       console.error('WebSocket error:', error);
       // The onclose handler will be called after this
     };
-  }, [reconnectAttempts]);
+  }, [reconnectAttempts, lastWsFetchTimeRef]);
 
   // Track last HTTP fetch time to prevent too frequent calls
-  const lastFetchRef = useRef<number>(0);
-  const MIN_FETCH_INTERVAL = 10000; // Minimum 10 seconds between HTTP fetches
+  const lastHttpFetchRef = useRef<number>(0);
+  const MIN_HTTP_FETCH_INTERVAL = 10000; // Minimum 10 seconds between HTTP fetches
 
   // HTTP fetch as backup with debouncing
   const fetchRatesHttp = useCallback(async () => {
     const now = Date.now();
 
     // Check if we've fetched recently to avoid hammering the API
-    if (now - lastFetchRef.current < MIN_FETCH_INTERVAL) {
+    if (now - lastHttpFetchRef.current < MIN_HTTP_FETCH_INTERVAL) {
       console.log('Skipping HTTP fetch - too soon since last fetch');
       return;
     }
@@ -133,7 +135,7 @@ const RateService: React.FC = () => {
       const apiBaseUrl = 'https://arbitrage-dw9h.onrender.com';
 
       console.log('Fetching rates via HTTP');
-      lastFetchRef.current = now;
+      lastHttpFetchRef.current = now;
 
       const response = await fetch(`${apiBaseUrl}/api/rates`);
 

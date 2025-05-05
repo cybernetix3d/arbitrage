@@ -414,8 +414,11 @@ async function fetchFixerRate() {
 // Combined rates endpoint
 app.get('/api/rates', async (req, res) => {
   try {
-    // Apply rate limiting
-    if (!combinedRateLimiter.tryConsume()) {
+    // Check if this is a forced refresh request
+    const forceRefresh = req.query.force === 'true';
+
+    // Apply rate limiting (but allow more frequent calls for forced refreshes)
+    if (!forceRefresh && !combinedRateLimiter.tryConsume()) {
       const waitTime = combinedRateLimiter.getWaitTimeInMs();
       console.log(`Rate limit exceeded for /api/rates. Retry after ${Math.ceil(waitTime / 1000)} seconds.`);
       return res.status(429).json({
@@ -429,9 +432,10 @@ app.get('/api/rates', async (req, res) => {
     const lastValrUpdate = ratesCache.lastValrUpdate ? new Date(ratesCache.lastValrUpdate) : null;
     const valrCacheAge = lastValrUpdate ? now - lastValrUpdate : Infinity;
 
-    // Only fetch fresh VALR rate if cache is older than 5 minutes
-    if (valrCacheAge > 5 * 60 * 1000) {
+    // Only fetch fresh VALR rate if cache is older than 5 minutes or if force refresh is requested
+    if (forceRefresh || valrCacheAge > 5 * 60 * 1000) {
       try {
+        console.log(forceRefresh ? 'Force refreshing VALR rate' : 'Cache expired, fetching fresh VALR rate');
         await fetchValrRate();
       } catch (error) {
         console.error('Error fetching VALR rate for /api/rates:', error);
@@ -446,10 +450,12 @@ app.get('/api/rates', async (req, res) => {
 
     // For market rate, check if we should fetch a new one
     const lastMarketUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
+    const marketCacheAge = lastMarketUpdate ? now - lastMarketUpdate : Infinity;
 
-    // If we've never fetched or it's been more than 2 hours (increased from 1 hour)
-    if (!lastMarketUpdate || (now - lastMarketUpdate) > 2 * 60 * 60 * 1000) {
+    // If we've never fetched or it's been more than 2 hours or if force refresh is requested
+    if (forceRefresh || !lastMarketUpdate || marketCacheAge > 2 * 60 * 60 * 1000) {
       try {
+        console.log(forceRefresh ? 'Force refreshing market rate' : 'Cache expired, fetching fresh market rate');
         // Try APIs in sequence
         await fetchOpenExchangeRate();
       } catch (openExchangeError) {

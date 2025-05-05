@@ -431,6 +431,14 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
         const createdAt = existingTradeSnap.exists() ? existingTradeSnap.val().createdAt : new Date().toISOString();
         await set(existingTradeRef, { ...tradeData, createdAt });
         if (isClosingTrade) {
+          // Get the current rates to store the original market rate and markup info
+          const ratesRef = ref(database, 'currentRates');
+          const ratesSnap = await get(ratesRef);
+          const ratesData = ratesSnap.exists() ? ratesSnap.val() : {
+            originalMarketRate: formData.marketRate,
+            markup: 0.4
+          };
+
           const profitHistoryRef = ref(database, `profitHistory/${currentUser.uid}`);
           await push(profitHistoryRef, {
             timestamp: new Date().toISOString(),
@@ -438,6 +446,8 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
             usdPurchased: formData.usdPurchased,
             valrRate: formData.valrRate,
             marketRate: formData.marketRate,
+            originalMarketRate: ratesData.originalMarketRate || formData.marketRate,
+            markup: ratesData.markup || 0.4,
             spread: spread,
             wireTransferFee: formData.wireTransferFee,
             finalZAR: finalZAR,

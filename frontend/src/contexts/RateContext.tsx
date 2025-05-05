@@ -41,13 +41,22 @@ export const RateProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const data = await response.json();
 
-      // Update Firebase with the latest rates
+      // Apply a 0.4% markup to the market rate to account for bank fees
+      const MARKET_RATE_MARKUP = 0.004; // 0.4%
+      const adjustedMarketRate = data.marketRate * (1 + MARKET_RATE_MARKUP);
+
+      // Calculate the adjusted spread with the marked-up market rate
+      const adjustedSpread = ((data.valrRate / adjustedMarketRate) - 1) * 100;
+
+      // Update Firebase with the latest rates including the markup
       // This will trigger updates in all components that listen to this data
       const ratesRef = ref(database, 'currentRates');
       await set(ratesRef, {
         valrRate: data.valrRate,
-        marketRate: data.marketRate,
-        spread: data.spread,
+        marketRate: adjustedMarketRate,
+        originalMarketRate: data.marketRate, // Store the original for reference
+        markup: MARKET_RATE_MARKUP * 100, // Store the markup percentage
+        spread: adjustedSpread,
         lastUpdated: new Date().toISOString()
       });
 

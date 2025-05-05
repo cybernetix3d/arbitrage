@@ -20,6 +20,8 @@ import ResponsiveTradeCard from '../components/ResponsiveTradeCard';
 interface RateData {
   valrRate: number;
   marketRate: number;
+  originalMarketRate?: number;
+  markup?: number;
   spread: number;
   lastUpdated: string;
 }
@@ -67,6 +69,8 @@ function Dashboard() {
   const [rateData, setRateData] = useState<RateData>({
     valrRate: 0,
     marketRate: 0,
+    originalMarketRate: 0,
+    markup: 0.4, // Default markup of 0.4%
     spread: 0,
     lastUpdated: '',
   });
@@ -104,7 +108,9 @@ function Dashboard() {
         setRateData({
           valrRate: data.valrRate || 0,
           marketRate: data.marketRate || 0,
-          spread: ((data.valrRate / data.marketRate) - 1) * 100 || 0,
+          originalMarketRate: data.originalMarketRate || data.marketRate || 0,
+          markup: data.markup || 0.4, // Default to 0.4% if not provided
+          spread: data.spread || ((data.valrRate / data.marketRate) - 1) * 100 || 0,
           lastUpdated: data.lastUpdated || new Date().toISOString(),
         });
       }
@@ -131,16 +137,17 @@ function Dashboard() {
       const data = snapshot.val();
       if (data) {
         // Process trades more efficiently
-        const openTradesArr = [];
-        const closedTradesArr = [];
+        const openTradesArr: Trade[] = [];
+        const closedTradesArr: Trade[] = [];
         let totalProfit = 0;
 
         // Process trades in a single pass
         Object.entries(data).forEach(([key, value]) => {
-          const trade = {
+          const tradeData = value as Omit<Trade, 'id'>;
+          const trade: Trade = {
             id: key,
-            ...value as any,
-            status: (value as any).status || 'open'
+            ...tradeData,
+            status: tradeData.status || 'open'
           };
 
           if (trade.status === 'open') {
@@ -403,8 +410,21 @@ function Dashboard() {
               <span className="text-gray-600 dark:text-gray-400">Market Rate (ZAR/USD):</span>
               <span className="font-medium text-gray-900 dark:text-white">
                 R {rateData.marketRate.toFixed(4)}
+                {rateData.markup ? (
+                  <span className="text-xs text-gray-500 ml-1">
+                    (includes {rateData.markup.toFixed(1)}% markup)
+                  </span>
+                ) : null}
               </span>
             </div>
+            {rateData.originalMarketRate && rateData.originalMarketRate !== rateData.marketRate ? (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 dark:text-gray-400">Original Market Rate:</span>
+                <span className="font-medium text-gray-500 dark:text-gray-400">
+                  R {rateData.originalMarketRate.toFixed(4)}
+                </span>
+              </div>
+            ) : null}
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">Current Spread:</span>
               <span

@@ -144,24 +144,30 @@ function broadcastRates() {
 // Prepare rates message with best available data
 function prepareRatesMessage() {
   // Use the most recent market rate (manual or API)
-  let marketRate = ratesCache.manualMarketRate;
+  let originalMarketRate = ratesCache.manualMarketRate;
 
   // If no manual rate, use API rate
-  if (marketRate === null) {
-    marketRate = ratesCache.marketRate;
+  if (originalMarketRate === null) {
+    originalMarketRate = ratesCache.marketRate;
   }
 
   const valrRate = ratesCache.valrRate;
 
+  // Apply a 0.4% markup to the market rate to account for bank fees
+  const MARKET_RATE_MARKUP = 0.004; // 0.4%
+  const adjustedMarketRate = originalMarketRate * (1 + MARKET_RATE_MARKUP);
+
   // Calculate spread if both rates are available
   let spread = 0;
-  if (valrRate !== null && marketRate !== null) {
-    spread = ((valrRate / marketRate) - 1) * 100;
+  if (valrRate !== null && adjustedMarketRate !== null) {
+    spread = ((valrRate / adjustedMarketRate) - 1) * 100;
   }
 
   return {
     valrRate,
-    marketRate,
+    marketRate: adjustedMarketRate,
+    originalMarketRate,
+    markup: MARKET_RATE_MARKUP * 100, // Store the markup percentage
     spread,
     lastUpdated: new Date().toISOString()
   };
@@ -455,16 +461,24 @@ app.get('/api/rates', async (req, res) => {
     const marketRate = ratesCache.manualMarketRate !== null ?
       ratesCache.manualMarketRate : ratesCache.marketRate;
 
-    // Calculate spread if both rates are available
-    let spread = 0;
-    if (ratesCache.valrRate !== null && marketRate !== null) {
-      spread = ((ratesCache.valrRate / marketRate) - 1) * 100;
+    // Original spread calculation is no longer needed as we'll use the adjusted spread
+
+    // Apply a 0.4% markup to the market rate to account for bank fees
+    const MARKET_RATE_MARKUP = 0.004; // 0.4%
+    const adjustedMarketRate = marketRate * (1 + MARKET_RATE_MARKUP);
+
+    // Recalculate spread with the adjusted market rate
+    let adjustedSpread = 0;
+    if (ratesCache.valrRate !== null && adjustedMarketRate !== null) {
+      adjustedSpread = ((ratesCache.valrRate / adjustedMarketRate) - 1) * 100;
     }
 
     res.json({
       valrRate: ratesCache.valrRate,
-      marketRate,
-      spread,
+      marketRate: adjustedMarketRate,
+      originalMarketRate: marketRate,
+      markup: MARKET_RATE_MARKUP * 100, // Store the markup percentage
+      spread: adjustedSpread,
       lastUpdated: new Date().toISOString()
     });
   } catch (error) {
@@ -590,8 +604,7 @@ app.get('/api/exchange_rate', async (_, res) => {
   }
 });
 
-// Reduce update frequency to conserve resources
-const RATE_UPDATE_INTERVAL = 5 * 60 * 1000; // Change from 1 min to 5 mins
+// Note: We're using on-demand updates instead of interval-based updates
 
 // Add memory leak prevention
 setInterval(() => {

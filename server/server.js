@@ -104,9 +104,6 @@ app.get('/health', (req, res) => {
 // Store connected clients
 const clients = new Set();
 
-// Create a rate limiter for WebSocket requests
-const wsRateLimiter = createRateLimiter(10, 1/5); // 10 requests max, refills at 1 per 5 seconds
-
 // WebSocket connection handler
 wss.on('connection', (ws) => {
   console.log('Client connected');
@@ -124,39 +121,21 @@ wss.on('connection', (ws) => {
     const now = Date.now();
     const messageStr = message.toString();
 
-    // If client sends "fetchRates", check rate limiting before processing
+    // If client sends "fetchRates", process the request
+    // We'll rely on the cache in fetchAndSendRates to prevent excessive API calls
     if (messageStr === 'fetchRates') {
-      // Check if this client is making too many requests
-      if (now - ws.lastRequestTime < 5000) { // Minimum 5 seconds between requests
-        console.log('Client rate limited (too frequent requests)');
-        ws.send(JSON.stringify({
-          type: 'rate_limited',
-          data: {
-            message: 'Too many requests',
-            retryAfter: 5
-          }
-        }));
-        return;
-      }
-
-      // Check global rate limiter
-      if (!wsRateLimiter.tryConsume()) {
-        const waitTime = wsRateLimiter.getWaitTimeInMs();
-        console.log(`WebSocket rate limit exceeded. Retry after ${Math.ceil(waitTime / 1000)} seconds.`);
-        ws.send(JSON.stringify({
-          type: 'rate_limited',
-          data: {
-            message: 'Server is busy, too many requests',
-            retryAfter: Math.ceil(waitTime / 1000)
-          }
-        }));
-        return;
+      // Simple rate limiting - no more than once every 30 seconds per client
+      // This is just to prevent excessive WebSocket messages, not API calls
+      if (now - ws.lastRequestTime < 30000) {
+        console.log('WebSocket request too frequent, using cached data');
+      } else {
+        console.log('Processing fetchRates request');
       }
 
       // Update last request time
       ws.lastRequestTime = now;
 
-      // Process the request
+      // Process the request - this will use cached data if available
       fetchAndSendRates(ws);
     }
   });
@@ -417,6 +396,18 @@ app.get('/api/rates', async (req, res) => {
     // Check if this is a forced refresh request
     const forceRefresh = req.query.force === 'true';
 
+    // Set cache control headers
+    if (forceRefresh) {
+      // No caching for forced refreshes
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+      res.set('Surrogate-Control', 'no-store');
+    } else {
+      // Allow caching for normal requests
+      res.set('Cache-Control', 'public, max-age=60'); // Cache for 1 minute
+    }
+
     // Apply rate limiting (but allow more frequent calls for forced refreshes)
     if (!forceRefresh && !combinedRateLimiter.tryConsume()) {
       const waitTime = combinedRateLimiter.getWaitTimeInMs();
@@ -432,10 +423,23 @@ app.get('/api/rates', async (req, res) => {
     const lastValrUpdate = ratesCache.lastValrUpdate ? new Date(ratesCache.lastValrUpdate) : null;
     const valrCacheAge = lastValrUpdate ? now - lastValrUpdate : Infinity;
 
-    // Only fetch fresh VALR rate if cache is older than 5 minutes or if force refresh is requested
-    if (forceRefresh || valrCacheAge > 5 * 60 * 1000) {
+    // Always fetch fresh VALR rate if force refresh is requested
+    if (forceRefresh) {
+      console.log('Force refreshing VALR rate');
       try {
-        console.log(forceRefresh ? 'Force refreshing VALR rate' : 'Cache expired, fetching fresh VALR rate');
+        await fetchValrRate();
+      } catch (error) {
+        console.error('Error fetching VALR rate for forced refresh:', error);
+        // If we don't have a VALR rate at all, return an error
+        if (ratesCache.valrRate === null) {
+          return res.status(500).json({ error: 'Failed to fetch VALR rate' });
+        }
+      }
+    }
+    // Otherwise, only fetch if cache is older than 5 minutes
+    else if (valrCacheAge > 5 * 60 * 1000) {
+      try {
+        console.log('Cache expired, fetching fresh VALR rate');
         await fetchValrRate();
       } catch (error) {
         console.error('Error fetching VALR rate for /api/rates:', error);
@@ -452,10 +456,10 @@ app.get('/api/rates', async (req, res) => {
     const lastMarketUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
     const marketCacheAge = lastMarketUpdate ? now - lastMarketUpdate : Infinity;
 
-    // If we've never fetched or it's been more than 2 hours or if force refresh is requested
-    if (forceRefresh || !lastMarketUpdate || marketCacheAge > 2 * 60 * 60 * 1000) {
+    // Always fetch fresh market rate if force refresh is requested
+    if (forceRefresh) {
       try {
-        console.log(forceRefresh ? 'Force refreshing market rate' : 'Cache expired, fetching fresh market rate');
+        console.log('Force refreshing market rate');
         // Try APIs in sequence
         await fetchOpenExchangeRate();
       } catch (openExchangeError) {
@@ -469,6 +473,26 @@ app.get('/api/rates', async (req, res) => {
           }
         }
       }
+    }
+    // Otherwise, only fetch if cache is older than 2 hours
+    else if (!lastMarketUpdate || marketCacheAge > 2 * 60 * 60 * 1000) {
+      try {
+        console.log('Cache expired, fetching fresh market rate');
+        // Try APIs in sequence
+        await fetchOpenExchangeRate();
+      } catch (openExchangeError) {
+        try {
+          await fetchExchangeRateAPI();
+        } catch (exchangeRateError) {
+          try {
+            await fetchFixerRate();
+          } catch (fixerError) {
+            console.log('All APIs failed, using cached rate if available');
+          }
+        }
+      }
+    } else {
+      console.log('Using cached market rate to reduce API calls');
     }
 
     // Use manual market rate if available

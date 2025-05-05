@@ -7,7 +7,7 @@ import { WebSocketServer } from 'ws';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { valrRateLimiter, exchangeRateLimiter, combinedRateLimiter } from './rate-limiter.js';
+import { createRateLimiter, valrRateLimiter, exchangeRateLimiter, combinedRateLimiter } from './rate-limiter.js';
 
 config(); // Load environment variables from .env
 

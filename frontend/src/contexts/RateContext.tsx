@@ -29,7 +29,7 @@ export const RateProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const apiBaseUrl = 'https://arbitrage-dw9h.onrender.com';
 
-      // Simple fetch with minimal overhead
+      // Simple fetch with minimal overhead - force refresh to get latest rates
       const response = await fetch(`${apiBaseUrl}/api/rates?force=true`);
 
       if (!response.ok) {
@@ -41,7 +41,8 @@ export const RateProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const data = await response.json();
 
-      // Update Firebase with minimal data
+      // Update Firebase with the latest rates
+      // This will trigger updates in all components that listen to this data
       const ratesRef = ref(database, 'currentRates');
       await set(ratesRef, {
         valrRate: data.valrRate,
@@ -50,6 +51,7 @@ export const RateProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastUpdated: new Date().toISOString()
       });
 
+      // Update last refreshed timestamp
       setLastRefreshed(new Date());
     } catch (error) {
       // Silent error handling

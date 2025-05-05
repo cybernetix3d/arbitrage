@@ -116,10 +116,10 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
             );
             setUserPins(filtered as Record<string, PinData>);
           }
-          if (Object.values(allPins).filter(item => 
-            typeof item === 'object' && 
-            item !== null && 
-            'allowanceType' in item && 
+          if (Object.values(allPins).filter(item =>
+            typeof item === 'object' &&
+            item !== null &&
+            'allowanceType' in item &&
             (item as PinData).allowanceType === 'SDA'
           ).length === 0) {
             const newSdaKey = `SDA-${Date.now()}`;
@@ -170,12 +170,13 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
               valrRate: ratesData.valrRate || 0,
               marketRate: userChangedMarketRate ? prev.marketRate : (ratesData.marketRate || 0)
             }));
+            // Don't auto-calculate anything on initial load
+            // Just set the market rate from the API
             if (!userChangedMarketRate && ratesData.marketRate > 0) {
-              const currentInitialZAR = formData.initialZAR || 0;
-              if (currentInitialZAR > 0) {
-                const usd = currentInitialZAR / ratesData.marketRate;
-                setFormData(prev => ({ ...prev, usdPurchased: usd }));
-              }
+              setFormData(prev => ({
+                ...prev,
+                marketRate: ratesData.marketRate
+              }));
             }
           }
         }
@@ -184,15 +185,21 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
           const tradeSnap = await get(tradeRef);
           if (tradeSnap.exists()) {
             const tradeData = tradeSnap.val();
+            // Always get the latest rates when editing or closing a trade
             const liveRatesSnap = await get(ref(database, 'currentRates'));
             const liveRatesData = liveRatesSnap.exists() ? liveRatesSnap.val() : { valrRate: 0, marketRate: 0 };
+
+            // For closing trades, always use the current VALR rate
+            // For editing, use the stored values but update VALR rate to current
             setFormData({
               tradeName: tradeData.tradeName || '',
               tradeDate: tradeData.tradeDate || new Date().toISOString().split('T')[0],
               initialZAR: tradeData.initialZAR || 0,
               usdPurchased: tradeData.usdPurchased || 0,
+              // Always use current VALR rate
               valrRate: liveRatesData.valrRate || 0,
-              marketRate: liveRatesData.marketRate || 0,
+              // For market rate, keep the original if editing, use current if closing
+              marketRate: isClosingTrade ? liveRatesData.marketRate : (tradeData.marketRate || liveRatesData.marketRate || 0),
               wireTransferFee: tradeData.wireTransferFee || 0,
               withdrawalFee: tradeData.withdrawalFee || userSettings.defaultWithdrawalFee,
               allowanceType: tradeData.allowanceType || '',
@@ -211,7 +218,7 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
       }
     };
     loadData();
-  }, [currentUser, isEditMode, tradeId, isClosingTrade, currentYear, formData.initialZAR, userChangedMarketRate, userSettings.defaultWithdrawalFee]);
+  }, [currentUser, isEditMode, tradeId, isClosingTrade, currentYear, userSettings.defaultWithdrawalFee]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -219,42 +226,92 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
       setFormData(prev => ({ ...prev, [name]: value }));
       return;
     }
+
+    // Parse the input value
     const parsed = parseFloat(value) || 0;
-    setFormData(prev => {
-      const updated = { ...prev, [name]: parsed };
-      if (name === 'marketRate') {
-        setUserChangedMarketRate(true);
-        setLastChanged('rate');
-        if (parsed > 0 && updated.initialZAR > 0) {
-          updated.usdPurchased = updated.initialZAR / parsed;
+
+    // Update the form data based on which field was changed
+    if (name === 'initialZAR') {
+      // When initialZAR changes, just update it directly
+      // Don't auto-calculate anything else
+      setFormData(prev => ({
+        ...prev,
+        initialZAR: parsed
+      }));
+
+      // If we have both initialZAR and usdPurchased, calculate the market rate
+      setFormData(prev => {
+        if (parsed > 0 && prev.usdPurchased > 0) {
+          const calculatedRate = parsed / prev.usdPurchased;
+          return {
+            ...prev,
+            initialZAR: parsed,
+            marketRate: calculatedRate
+          };
         }
-      } else if (name === 'usdPurchased') {
-        setLastChanged('usd');
-        if (parsed > 0 && updated.initialZAR > 0) {
-          updated.marketRate = updated.initialZAR / parsed;
+        return { ...prev, initialZAR: parsed };
+      });
+    }
+    else if (name === 'usdPurchased') {
+      // When USD changes, just update it directly
+      // Don't auto-calculate anything else
+      setFormData(prev => ({
+        ...prev,
+        usdPurchased: parsed
+      }));
+
+      // If we have both initialZAR and usdPurchased, calculate the market rate
+      setFormData(prev => {
+        if (parsed > 0 && prev.initialZAR > 0) {
+          const calculatedRate = prev.initialZAR / parsed;
+          return {
+            ...prev,
+            usdPurchased: parsed,
+            marketRate: calculatedRate
+          };
         }
-      } else if (name === 'initialZAR') {
-        if (parsed > 0) {
-          if (lastChanged === 'usd' || lastChanged === null) {
-            updated.marketRate = (updated.usdPurchased > 0) ? (parsed / updated.usdPurchased) : prev.marketRate;
-          } else {
-            updated.usdPurchased = (updated.marketRate > 0) ? (parsed / updated.marketRate) : prev.usdPurchased;
-          }
-        }
-      }
-      return updated;
-    });
+        return { ...prev, usdPurchased: parsed };
+      });
+    }
+    else if (name === 'marketRate') {
+      // When market rate changes, just update it directly
+      // Mark as user-changed so we know it's a manual entry
+      setUserChangedMarketRate(true);
+      setLastChanged('rate');
+
+      setFormData(prev => ({
+        ...prev,
+        marketRate: parsed
+      }));
+    }
+    else if (name === 'valrRate') {
+      // Just update the VALR rate directly
+      setFormData(prev => ({
+        ...prev,
+        valrRate: parsed
+      }));
+    }
+    else {
+      // For other numeric fields (fees), just update directly
+      setFormData(prev => ({
+        ...prev,
+        [name]: parsed
+      }));
+    }
   };
 
   const resetMarketRate = () => {
     if (currentRates.marketRate > 0) {
-      setFormData(prev => {
-        const m = currentRates.marketRate;
-        const u = (m > 0 && prev.initialZAR > 0) ? (prev.initialZAR / m) : prev.usdPurchased;
-        return { ...prev, marketRate: m, usdPurchased: u };
-      });
+      // Just reset the market rate to the current rate from the API
+      // Don't change any other values
+      setFormData(prev => ({
+        ...prev,
+        marketRate: currentRates.marketRate
+      }));
+
+      // Reset flags
       setUserChangedMarketRate(false);
-      setLastChanged('rate');
+      setLastChanged(null);
     } else {
       setError("Current market rate is not available");
     }
@@ -424,6 +481,9 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 sm:grid sm:grid-cols-2 sm:gap-4 sm:space-y-0 mb-4">
               <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Trade Name
+                </label>
                 <input
                   type="text"
                   name="tradeName"
@@ -434,6 +494,9 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Trade Date
+                </label>
                 <input
                   type="date"
                   name="tradeDate"
@@ -448,6 +511,9 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
             {!isClosingTrade && (
               <>
                 <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Allowance Type
+                  </label>
                   <select
                     name="allowanceType"
                     value={formData.allowanceType}
@@ -461,6 +527,9 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                   </select>
                 </div>
                 <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    PIN Certificate
+                  </label>
                   <select
                     name="selectedPin"
                     value={formData.selectedPin}
@@ -505,6 +574,9 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
               </>
             )}
             <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Initial ZAR Amount
+              </label>
               <input
                 type="number"
                 name="initialZAR"
@@ -514,10 +586,13 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                 min="0"
                 step="any"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                placeholder="Initial ZAR Amount"
+                placeholder="Amount in South African Rand"
               />
             </div>
             <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                USD Purchased
+              </label>
               <input
                 type="number"
                 name="usdPurchased"
@@ -528,10 +603,13 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                 step="any"
                 disabled={isClosingTrade}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-70 disabled:cursor-not-allowed"
-                placeholder="USD Purchased"
+                placeholder="Amount in US Dollars"
               />
             </div>
             <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                VALR Rate (USDC/ZAR)
+              </label>
               <input
                 type="number"
                 name="valrRate"
@@ -541,13 +619,16 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                 min="0"
                 step="any"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                placeholder="VALR Rate (USDC/ZAR)"
+                placeholder="VALR Exchange Rate"
               />
               {isClosingTrade && (
                 <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">Current VALR rate is used for closing</p>
               )}
             </div>
             <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Market Rate (ZAR/USD)
+              </label>
               <div className="relative">
                 <input
                   type="number"
@@ -558,7 +639,7 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                   min="0"
                   step="any"
                   className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${userChangedMarketRate ? 'border-yellow-400 dark:border-yellow-600' : ''}`}
-                  placeholder="Market Rate (ZAR/USD)"
+                  placeholder="Bank Exchange Rate"
                 />
                 {userChangedMarketRate && (
                   <button
@@ -577,6 +658,9 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
               )}
             </div>
             <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Wire Transfer Fee (%)
+              </label>
               <input
                 type="number"
                 name="wireTransferFee"
@@ -586,10 +670,13 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                 step="any"
                 disabled={isClosingTrade}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-70 disabled:cursor-not-allowed"
-                placeholder="Wire Transfer Fee (%)"
+                placeholder="Fee percentage (e.g. 0.13)"
               />
             </div>
             <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Withdrawal Fee (ZAR)
+              </label>
               <input
                 type="number"
                 name="withdrawalFee"
@@ -599,20 +686,24 @@ const ResponsiveTradeForm: React.FC<TradeFormProps> = ({
                 step="any"
                 disabled={isClosingTrade}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-70 disabled:cursor-not-allowed"
-                placeholder="Withdrawal Fee (ZAR)"
+                placeholder="Fee in Rand (e.g. 30)"
               />
             </div>
             <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Notes
+              </label>
               <textarea
                 name="notes"
                 value={formData.notes}
                 onChange={handleInputChange}
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                placeholder="Notes"
+                placeholder="Additional notes about this trade"
               />
             </div>
             <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg mb-6">
+              <h3 className="text-md font-semibold text-gray-900 dark:text-white mb-3">Trade Summary</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="text-gray-600 dark:text-gray-400">Spread:</div>
                 <div className={`font-medium ${spread > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}`}>

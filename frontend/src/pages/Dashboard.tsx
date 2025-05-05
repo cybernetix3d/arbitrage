@@ -77,10 +77,7 @@ function Dashboard() {
     defaultMinWireTransferFee: 10,
     defaultWithdrawalFee: 30,
   });
-  const [currentProfit, setCurrentProfit] = useState({
-    profitZAR: 0,
-    profitPercentage: 0,
-  });
+  // Removed currentProfit state in favor of useMemo
   const [totalLifetimeProfit, setTotalLifetimeProfit] = useState(0);
   const [openTrades, setOpenTrades] = useState<Trade[]>([]);
   const [recentClosedTrades, setRecentClosedTrades] = useState<Trade[]>([]);
@@ -111,9 +108,9 @@ function Dashboard() {
           lastUpdated: data.lastUpdated || new Date().toISOString(),
         });
       }
-    });
+    }, { onlyOnce: false }); // Only update when data changes
 
-    // Fetch user settings
+    // Fetch user settings - only once since they rarely change
     const userSettingsRef = ref(database, `userSettings/${currentUser.uid}`);
     const unsubscribeSettings = onValue(userSettingsRef, (snapshot) => {
       const data = snapshot.val();
@@ -126,30 +123,46 @@ function Dashboard() {
           defaultWithdrawalFee: data.defaultWithdrawalFee || 30,
         });
       }
-    });
+    }, { onlyOnce: true }); // Only fetch once to reduce overhead
 
     // Fetch trades
     const tradesRef = ref(database, `trades/${currentUser.uid}`);
     const unsubscribeTrades = onValue(tradesRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const tradesArray = Object.keys(data).map((key) => ({
-          id: key,
-          ...data[key],
-          status: data[key].status || 'open',
-        }));
-        tradesArray.sort(
-          (a, b) =>
-            new Date(b.tradeDate).getTime() - new Date(a.tradeDate).getTime()
+        // Process trades more efficiently
+        const openTradesArr = [];
+        const closedTradesArr = [];
+        let totalProfit = 0;
+
+        // Process trades in a single pass
+        Object.entries(data).forEach(([key, value]) => {
+          const trade = {
+            id: key,
+            ...value as any,
+            status: (value as any).status || 'open'
+          };
+
+          if (trade.status === 'open') {
+            openTradesArr.push(trade);
+          } else if (trade.status === 'closed') {
+            if (closedTradesArr.length < 5) {
+              closedTradesArr.push(trade);
+            }
+            totalProfit += trade.profitZAR;
+          }
+        });
+
+        // Sort only the arrays we need
+        openTradesArr.sort((a, b) =>
+          new Date(b.tradeDate).getTime() - new Date(a.tradeDate).getTime()
+        );
+        closedTradesArr.sort((a, b) =>
+          new Date(b.tradeDate).getTime() - new Date(a.tradeDate).getTime()
         );
 
-        const openTradesArr = tradesArray.filter((trade) => trade.status === 'open');
-        const closedTradesArr = tradesArray.filter((trade) => trade.status === 'closed').slice(0, 5);
         setOpenTrades(openTradesArr);
         setRecentClosedTrades(closedTradesArr);
-        const totalProfit = tradesArray
-          .filter((trade) => trade.status === 'closed')
-          .reduce((sum, trade) => sum + trade.profitZAR, 0);
         setTotalLifetimeProfit(totalProfit);
       } else {
         setOpenTrades([]);
@@ -166,7 +179,7 @@ function Dashboard() {
     };
   }, [currentUser]);
 
-  // Fetch annual allowance and PINs
+  // Fetch annual allowance and PINs - only once on component mount
   useEffect(() => {
     if (!currentUser) return;
     const year = new Date().getFullYear();
@@ -175,12 +188,12 @@ function Dashboard() {
     const unsubscribeAnnual = onValue(annualRef, (snap) => {
       const data = snap.val() || { SDAUsed: 0, foreignUsed: 0 };
       setAnnualAllowance(data);
-    });
+    }, { onlyOnce: true }); // Only fetch once to reduce overhead
 
     const pinsRef = ref(database, `userPins/${currentUser.uid}`);
     const unsubscribePins = onValue(pinsRef, (snap) => {
       setPins(snap.val() || {});
-    });
+    }, { onlyOnce: true }); // Only fetch once to reduce overhead
 
     return () => {
       unsubscribeAnnual();
@@ -189,10 +202,10 @@ function Dashboard() {
   }, [currentUser]);
 
   // Recalculate current profit for all open trades using live VALR rate
-  useEffect(() => {
+  // Using a more efficient approach with useMemo instead of useEffect
+  const currentProfitData = React.useMemo(() => {
     if (rateData.valrRate <= 0 || openTrades.length === 0) {
-      setCurrentProfit({ profitZAR: 0, profitPercentage: 0 });
-      return;
+      return { profitZAR: 0, profitPercentage: 0 };
     }
 
     let totalInitialZAR = 0;
@@ -215,11 +228,19 @@ function Dashboard() {
     }
 
     const profitPercentage = totalInitialZAR > 0 ? (totalProfitZAR / totalInitialZAR) * 100 : 0;
-    setCurrentProfit({
+    return {
       profitZAR: totalProfitZAR,
       profitPercentage
-    });
+    };
   }, [rateData.valrRate, openTrades, userData.defaultMinWireTransferFee, capitecFee]);
+
+  // Update open trades with current VALR rate when it changes
+  useEffect(() => {
+    if (rateData.valrRate <= 0 || openTrades.length === 0 || !currentUser) return;
+
+    // We don't need to update the database, just use the current VALR rate for calculations
+    // This is handled in the trade table and cards rendering
+  }, [rateData.valrRate, openTrades.length, currentUser]);
 
   const handleOpenNewTrade = () => {
     setShowNewTradeForm(true);
@@ -275,11 +296,11 @@ function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400">Current Profit (ZAR)</p>
-              <p className={`text-xl sm:text-2xl font-bold ${currentProfit.profitZAR >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                R {currentProfit.profitZAR.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <p className={`text-xl sm:text-2xl font-bold ${currentProfitData.profitZAR >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                R {currentProfitData.profitZAR.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
-            <TrendingUp className={`h-6 w-6 sm:h-8 sm:w-8 ${currentProfit.profitZAR >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} />
+            <TrendingUp className={`h-6 w-6 sm:h-8 sm:w-8 ${currentProfitData.profitZAR >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} />
           </div>
           {openTrades.length === 0 && (
             <div className="mt-3 text-center">
@@ -445,9 +466,13 @@ function Dashboard() {
                       userData.defaultMinWireTransferFee
                     );
                     const usdAfterFee = trade.usdPurchased - wireTransferFee;
-                    const currentValue = usdAfterFee * rateData.valrRate - (trade.withdrawalFee + capitecFee);
+
+                    // Always use the current VALR rate for calculations
+                    const currentValrRate = rateData.valrRate;
+                    const currentValue = usdAfterFee * currentValrRate - (trade.withdrawalFee + capitecFee);
                     const liveProfit = currentValue - trade.initialZAR;
                     const liveROI = trade.initialZAR > 0 ? (liveProfit / trade.initialZAR) * 100 : 0;
+
                     return (
                       <tr key={trade.id}>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
@@ -485,14 +510,19 @@ function Dashboard() {
                   userData.defaultMinWireTransferFee
                 );
                 const usdAfterFee = trade.usdPurchased - wireTransferFee;
-                const currentValue = usdAfterFee * rateData.valrRate - (trade.withdrawalFee + capitecFee);
+
+                // Always use the current VALR rate for calculations
+                const currentValrRate = rateData.valrRate;
+                const currentValue = usdAfterFee * currentValrRate - (trade.withdrawalFee + capitecFee);
                 const liveProfit = currentValue - trade.initialZAR;
                 const liveROI = trade.initialZAR > 0 ? (liveProfit / trade.initialZAR) * 100 : 0;
+
                 return (
                   <ResponsiveTradeCard
                     key={trade.id}
                     trade={{
                       ...trade,
+                      valrRate: currentValrRate, // Use current VALR rate
                       profitZAR: liveProfit,
                       profitPercentage: liveROI,
                       selectedPin: trade.selectedPin

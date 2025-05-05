@@ -2,14 +2,9 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { database } from '../lib/firebase';
 import { ref, set } from 'firebase/database';
 
-// Extend WebSocket type to include our custom properties
-interface ExtendedWebSocket extends WebSocket {
-  rateUpdateInterval?: NodeJS.Timeout;
-}
-
 const RateService: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
-  const wsRef = useRef<ExtendedWebSocket | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastRateUpdateRef = useRef<number>(0);
 
@@ -26,14 +21,12 @@ const RateService: React.FC = () => {
 
     // Connect to WebSocket server
     const wsUrl = 'wss://arbitrage-dw9h.onrender.com';
-    console.log('Connecting to WebSocket:', wsUrl);
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     // Connection opened
     ws.onopen = () => {
-      console.log('WebSocket connection established');
       setIsConnected(true);
 
       // Request initial rates
@@ -45,17 +38,9 @@ const RateService: React.FC = () => {
         reconnectTimeoutRef.current = null;
       }
 
-      // Set up periodic rate updates via WebSocket
-      // This will request rates every 60 seconds if the connection is active
-      const rateUpdateInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          console.log('Requesting periodic rate update via WebSocket');
-          ws.send('fetchRates');
-        }
-      }, 60000); // Every 60 seconds
-
-      // Store the interval so we can clear it later
-      ws.rateUpdateInterval = rateUpdateInterval;
+      // We'll no longer set up automatic periodic updates via WebSocket
+      // This reduces CPU and network usage
+      // Users can manually refresh using the refresh button instead
     };
 
     // Listen for messages
@@ -75,44 +60,30 @@ const RateService: React.FC = () => {
               spread,
               lastUpdated
             });
-            console.log('Updated Firebase via WebSocket');
             lastRateUpdateRef.current = Date.now();
           } catch (error) {
-            console.error('Firebase error:', error);
+            // Silent error handling to reduce console noise
           }
-        } else if (message.type === 'error') {
-          console.error('WebSocket error:', message.data.message);
         }
       } catch (error) {
-        console.error('Error processing WebSocket message:', error);
+        // Silent error handling to reduce console noise
       }
     };
 
     // Connection closed
     ws.onclose = () => {
-      console.log('WebSocket connection closed');
       setIsConnected(false);
 
-      // Clear the rate update interval if it exists
-      if (ws.rateUpdateInterval) {
-        clearInterval(ws.rateUpdateInterval);
-      }
-
-      // Exponential backoff with jitter
-      const delay = Math.min(
-        5000 * Math.pow(1.5, reconnectAttempts) + Math.random() * 1000,
-        MAX_RECONNECT_DELAY
-      );
-      setReconnectAttempts(prevAttempts => prevAttempts + 1);
+      // Simple reconnection with fixed delay to reduce CPU usage
+      const delay = 10000; // Fixed 10-second delay
 
       reconnectTimeoutRef.current = setTimeout(() => {
         connectWebSocket();
       }, delay);
     };
 
-    // Connection error
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+    // Connection error - silent handler
+    ws.onerror = () => {
       // The onclose handler will be called after this
     };
   }, [reconnectAttempts]);
@@ -124,47 +95,38 @@ const RateService: React.FC = () => {
     // Only fetch via HTTP if it's been at least 2 minutes since our last update
     // This prevents excessive API calls while still providing a fallback
     if (now - lastRateUpdateRef.current < 120000) {
-      console.log('Skipping HTTP fetch - recent update available');
       return;
     }
 
     try {
       const apiBaseUrl = 'https://arbitrage-dw9h.onrender.com';
 
-      console.log('Fetching rates via HTTP fallback');
-
       const response = await fetch(`${apiBaseUrl}/api/rates`);
 
       if (!response.ok) {
         // Handle rate limiting response (HTTP 429)
         if (response.status === 429) {
-          const data = await response.json();
-          console.log(`Rate limited. Retry after ${data.retryAfter} seconds`);
           return;
         }
-        throw new Error(`Failed to fetch rates: ${response.status}`);
+        return;
       }
 
       const data = await response.json();
-      console.log('Received rate data via HTTP:', data);
 
       // Update Firebase
       try {
         const ratesRef = ref(database, 'currentRates');
         await set(ratesRef, data);
-        console.log('Updated Firebase via HTTP');
         lastRateUpdateRef.current = now;
       } catch (error) {
-        console.error('Firebase error:', error);
+        // Silent error handling
       }
     } catch (error) {
-      console.error('Error fetching rates via HTTP:', error);
+      // Silent error handling
     }
   }, [lastRateUpdateRef]);
 
   useEffect(() => {
-    console.log('RateService starting...');
-
     // Start with WebSocket connection
     connectWebSocket();
 
@@ -175,7 +137,6 @@ const RateService: React.FC = () => {
     // This is a fallback that only runs if the WebSocket is disconnected
     const httpFallbackInterval = setInterval(() => {
       if (!isConnected) {
-        console.log('WebSocket not connected, using HTTP fallback');
         fetchRatesHttp();
       }
     }, 300000); // Check every 5 minutes
@@ -183,10 +144,6 @@ const RateService: React.FC = () => {
     // Clean up
     return () => {
       if (wsRef.current) {
-        // Clear the rate update interval if it exists
-        if (wsRef.current.rateUpdateInterval) {
-          clearInterval(wsRef.current.rateUpdateInterval);
-        }
         wsRef.current.close();
       }
       if (reconnectTimeoutRef.current) {

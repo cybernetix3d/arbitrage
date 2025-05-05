@@ -104,44 +104,24 @@ app.get('/health', (req, res) => {
 // Store connected clients
 const clients = new Set();
 
-// WebSocket connection handler
+// WebSocket connection handler - simplified for better performance
 wss.on('connection', (ws) => {
-  console.log('Client connected');
   clients.add(ws);
-
-  // Add client-specific properties
-  ws.lastRequestTime = Date.now();
 
   // Send initial rates when client connects
   fetchAndSendRates(ws);
 
   ws.on('message', (message) => {
-    console.log('Received message:', message.toString());
-
-    const now = Date.now();
     const messageStr = message.toString();
 
     // If client sends "fetchRates", process the request
-    // We'll rely on the cache in fetchAndSendRates to prevent excessive API calls
     if (messageStr === 'fetchRates') {
-      // Simple rate limiting - no more than once every 30 seconds per client
-      // This is just to prevent excessive WebSocket messages, not API calls
-      if (now - ws.lastRequestTime < 30000) {
-        console.log('WebSocket request too frequent, using cached data');
-      } else {
-        console.log('Processing fetchRates request');
-      }
-
-      // Update last request time
-      ws.lastRequestTime = now;
-
       // Process the request - this will use cached data if available
       fetchAndSendRates(ws);
     }
   });
 
   ws.on('close', () => {
-    console.log('Client disconnected');
     clients.delete(ws);
   });
 });
@@ -200,46 +180,34 @@ async function fetchAndSendRates(ws = null) {
       // Apply rate limiting for VALR API
       if (valrRateLimiter.tryConsume()) {
         await fetchValrRate();
-      } else {
-        console.log('Rate limit reached for VALR API, using cached data');
-        // If we don't have any cached data, we'll just continue with null values
       }
-    } else {
-      console.log('Using cached VALR rate to reduce API calls');
     }
 
     // For market rate, check if we should fetch a new one
     const lastMarketUpdate = ratesCache.lastMarketUpdate ? new Date(ratesCache.lastMarketUpdate) : null;
     const marketCacheAge = lastMarketUpdate ? now - lastMarketUpdate : Infinity;
 
-    // If we've never fetched or it's been more than 3 hours (increased from 1 hour)
+    // If we've never fetched or it's been more than 3 hours
     if (marketCacheAge > 3 * 60 * 60 * 1000 || ratesCache.marketRate === null) {
       // Apply rate limiting for exchange rate APIs
       if (exchangeRateLimiter.tryConsume()) {
-        console.log('Fetching fresh market rate from API');
         try {
           // Try Open Exchange Rates first
           await fetchOpenExchangeRate();
         } catch (openExchangeError) {
-          console.log('Open Exchange error:', openExchangeError.message);
           try {
             // Then try Exchange Rate API
             await fetchExchangeRateAPI();
           } catch (exchangeRateError) {
-            console.log('Exchange Rate API error:', exchangeRateError.message);
             try {
               // Finally try Fixer as last resort
               await fetchFixerRate();
             } catch (fixerError) {
-              console.log('All APIs failed, using cached value:', fixerError.message);
+              // Silent error handling
             }
           }
         }
-      } else {
-        console.log('Rate limit reached for exchange rate APIs, using cached data');
       }
-    } else {
-      console.log('Using cached market rate to avoid rate limiting');
     }
 
     // Prepare rates message
@@ -261,7 +229,7 @@ async function fetchAndSendRates(ws = null) {
       });
     }
   } catch (error) {
-    console.error('Error fetching rates:', error);
+    // Silent error handling for better performance
     const errorMessage = JSON.stringify({
       type: 'error',
       data: { message: 'Failed to fetch rates' }
@@ -276,8 +244,6 @@ async function fetchAndSendRates(ws = null) {
 // Fetch VALR rate - always fetch fresh data
 async function fetchValrRate() {
   try {
-    console.log('Fetching fresh VALR rate');
-
     // Configure headers with API key if provided
     const headers = {};
     if (VALR_API_KEY) {
@@ -286,7 +252,7 @@ async function fetchValrRate() {
 
     const response = await fetch('https://api.valr.com/v1/public/USDCZAR/marketsummary', { headers });
     if (!response.ok) {
-      throw new Error(`VALR API error: ${response.statusText}`);
+      throw new Error(`VALR API error`);
     }
     const data = await response.json();
     ratesCache.valrRate = parseFloat(data.lastTradedPrice);
@@ -294,7 +260,6 @@ async function fetchValrRate() {
     cacheIsDirty = true;
     return ratesCache.valrRate;
   } catch (error) {
-    console.error('Error fetching VALR rate:', error);
     throw error;
   }
 }
@@ -302,25 +267,22 @@ async function fetchValrRate() {
 // Fetch market rate from Open Exchange Rates API
 async function fetchOpenExchangeRate() {
   try {
-    console.log('Fetching exchange rate from Open Exchange Rates API');
     const response = await fetch(`https://openexchangerates.org/api/latest.json?app_id=${OPEN_EXCHANGE_APP_ID}&symbols=ZAR`);
     if (!response.ok) {
-      throw new Error(`Open Exchange Rates API error: ${response.statusText}`);
+      throw new Error(`Open Exchange Rates API error`);
     }
     const data = await response.json();
 
     if (!data.rates || !data.rates.ZAR) {
-      throw new Error('ZAR rate not found in Open Exchange response');
+      throw new Error('ZAR rate not found');
     }
 
     ratesCache.marketRate = data.rates.ZAR;
     ratesCache.lastMarketUpdate = new Date().toISOString();
     cacheIsDirty = true;
     saveCache();
-    console.log('Updated market rate from Open Exchange:', ratesCache.marketRate);
     return ratesCache.marketRate;
   } catch (error) {
-    console.error('Error fetching from Open Exchange:', error);
     throw error;
   }
 }
@@ -328,29 +290,26 @@ async function fetchOpenExchangeRate() {
 // Fetch market rate from Exchange Rate API
 async function fetchExchangeRateAPI() {
   try {
-    console.log('Fetching exchange rate from Exchange Rate API');
     const response = await fetch(`https://v6.exchangerate-api.com/v6/${EXCHANGERATE_API_KEY}/latest/USD`);
     if (!response.ok) {
-      throw new Error(`Exchange Rate API error: ${response.statusText}`);
+      throw new Error(`Exchange Rate API error`);
     }
     const data = await response.json();
 
     if (data.result !== 'success') {
-      throw new Error(`Exchange Rate API error: ${data.error || 'Unknown error'}`);
+      throw new Error(`Exchange Rate API error`);
     }
 
     if (!data.conversion_rates || !data.conversion_rates.ZAR) {
-      throw new Error('ZAR rate not found in Exchange Rate API response');
+      throw new Error('ZAR rate not found');
     }
 
     ratesCache.marketRate = data.conversion_rates.ZAR;
     ratesCache.lastMarketUpdate = new Date().toISOString();
     cacheIsDirty = true;
     saveCache();
-    console.log('Updated market rate from Exchange Rate API:', ratesCache.marketRate);
     return ratesCache.marketRate;
   } catch (error) {
-    console.error('Error fetching from Exchange Rate API:', error);
     throw error;
   }
 }
@@ -358,19 +317,18 @@ async function fetchExchangeRateAPI() {
 // Fetch market rate from Fixer API (as backup)
 async function fetchFixerRate() {
   try {
-    console.log('Fetching exchange rate from Fixer API (backup)');
     const response = await fetch(`http://data.fixer.io/api/latest?access_key=${FIXER_API_KEY}&symbols=ZAR,USD`);
     if (!response.ok) {
-      throw new Error(`Fixer API error: ${response.statusText}`);
+      throw new Error(`Fixer API error`);
     }
     const data = await response.json();
 
     if (!data.success) {
-      throw new Error(`Fixer API error: ${data.error?.info || 'Unknown error'}`);
+      throw new Error(`Fixer API error`);
     }
 
     if (!data.rates || !data.rates.ZAR || !data.rates.USD) {
-      throw new Error('Required rates not found in Fixer response');
+      throw new Error('Required rates not found');
     }
 
     // Fixer base currency is EUR, so we need to calculate USD/ZAR
@@ -382,10 +340,8 @@ async function fetchFixerRate() {
     ratesCache.lastMarketUpdate = new Date().toISOString();
     cacheIsDirty = true;
     saveCache();
-    console.log('Updated market rate from Fixer:', ratesCache.marketRate);
     return ratesCache.marketRate;
   } catch (error) {
-    console.error('Error fetching from Fixer:', error);
     throw error;
   }
 }
@@ -518,7 +474,7 @@ app.get('/api/rates', async (req, res) => {
 });
 
 // VALR rate endpoint with rate limiting
-app.get('/api/valr_rate', async (req, res) => {
+app.get('/api/valr_rate', async (_, res) => {
   try {
     // Apply rate limiting
     if (!valrRateLimiter.tryConsume()) {
@@ -576,7 +532,7 @@ app.get('/api/valr_rate', async (req, res) => {
 });
 
 // Exchange rate endpoint with rate limiting
-app.get('/api/exchange_rate', async (req, res) => {
+app.get('/api/exchange_rate', async (_, res) => {
   try {
     // Apply rate limiting
     if (!exchangeRateLimiter.tryConsume()) {

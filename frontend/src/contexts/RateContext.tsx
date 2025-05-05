@@ -29,55 +29,30 @@ export const RateProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const apiBaseUrl = 'https://arbitrage-dw9h.onrender.com';
 
-      console.log('Manually refreshing rates via HTTP');
-
-      // Add a cache-busting parameter to ensure we get a fresh response
-      const cacheBuster = Date.now();
-      const response = await fetch(`${apiBaseUrl}/api/rates?force=true&_=${cacheBuster}`, {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
-      });
+      // Simple fetch with minimal overhead
+      const response = await fetch(`${apiBaseUrl}/api/rates?force=true`);
 
       if (!response.ok) {
         if (response.status === 429) {
-          const data = await response.json();
-          console.log(`Rate limited. Retry after ${data.retryAfter} seconds`);
-          setIsRefreshing(false);
           return;
         }
-        throw new Error(`Failed to fetch rates: ${response.status}`);
+        return;
       }
 
       const data = await response.json();
-      console.log('Received fresh rate data:', data);
 
-      // Update Firebase directly with the received data
-      // This ensures we don't rely on Firebase to propagate the changes
+      // Update Firebase with minimal data
       const ratesRef = ref(database, 'currentRates');
       await set(ratesRef, {
         valrRate: data.valrRate,
         marketRate: data.marketRate,
         spread: data.spread,
-        lastUpdated: data.lastUpdated || new Date().toISOString()
+        lastUpdated: new Date().toISOString()
       });
 
-      console.log('Updated Firebase with fresh rates');
       setLastRefreshed(new Date());
     } catch (error) {
-      console.error('Error refreshing rates:', error);
-      // Try a direct update to Firebase as a fallback
-      try {
-        // Just update the lastUpdated field to trigger a refresh
-        const ratesRef = ref(database, 'currentRates');
-        await set(ratesRef, {
-          lastUpdated: new Date().toISOString()
-        });
-      } catch (fbError) {
-        console.error('Firebase fallback error:', fbError);
-      }
+      // Silent error handling
     } finally {
       setIsRefreshing(false);
     }
